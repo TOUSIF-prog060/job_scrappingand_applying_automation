@@ -42,7 +42,7 @@ async function runApplyForJob(jobId, options = {}) {
 /**
  * Open a live interactive Playwright Chromium window on desktop for a job application,
  * populate all candidate fields (Name, Email, Phone, Resume, Gender, Race, Disability, Veteran, Q&A),
- * and leave the browser window open on screen for user inspection & submission.
+ * bring window to front, and leave the browser window open on screen.
  */
 async function openFilledBrowser(jobId) {
   const job = getJobById(jobId);
@@ -54,10 +54,12 @@ async function openFilledBrowser(jobId) {
 
   const { page } = await launchBrowser({ headless: false });
   await page.goto(job.application_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1000);
 
   console.log(`[OpenFilledBrowser] Auto-filling candidate fields in live browser window...`);
   await fillVisibleFields(page, candidate);
+  await page.bringToFront().catch(() => {});
+
   console.log(`[OpenFilledBrowser] Form filled! Browser window remains open on desktop screen.`);
 
   return { message: 'Filled browser window launched on desktop screen.' };

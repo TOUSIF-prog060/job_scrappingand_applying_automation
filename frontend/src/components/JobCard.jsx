@@ -4,22 +4,6 @@ import { applyToJob, openFilledBrowserApi } from '../api/jobsApi';
 
 const PROCESSING_STATUSES = new Set(['PROCESSING', 'FORM_FILLED', 'READY_FOR_SUBMISSION']);
 
-function buildPreFilledUrl(baseUrl, candidate) {
-  if (!baseUrl) return '#';
-  if (!candidate) return baseUrl;
-
-  try {
-    const url = new URL(baseUrl);
-    if (candidate.firstName) url.searchParams.set('first_name', candidate.firstName);
-    if (candidate.lastName) url.searchParams.set('last_name', candidate.lastName);
-    if (candidate.email) url.searchParams.set('email', candidate.email);
-    if (candidate.phone) url.searchParams.set('phone', candidate.phone);
-    return url.toString();
-  } catch (_) {
-    return baseUrl;
-  }
-}
-
 export default function JobCard({ job, candidate, allowSubmit = false, onApplyStart, onScreenshot }) {
   const [applying, setApplying] = useState(false);
   const [openingBrowser, setOpeningBrowser] = useState(false);
@@ -52,20 +36,20 @@ export default function JobCard({ job, candidate, allowSubmit = false, onApplySt
     }
   }
 
-  async function handleOpenBrowser() {
+  async function handleOpenBrowser(e) {
+    if (e) e.preventDefault();
     setOpeningBrowser(true);
     setError(null);
     try {
       await openFilledBrowserApi(job.id);
-    } catch (e) {
-      setError(e.message);
+    } catch (err) {
+      setError(err.message);
     } finally {
       setOpeningBrowser(false);
     }
   }
 
   const initials = (job.company || '?').charAt(0).toUpperCase();
-  const formUrl = buildPreFilledUrl(job.application_url || job.job_url, candidate);
 
   return (
     <article className={`job-card ${statusClass}`}>
@@ -98,16 +82,27 @@ export default function JobCard({ job, candidate, allowSubmit = false, onApplySt
       )}
 
       <div className="card-footer">
-        {formUrl && (
-          <a
-            href={formUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="card-link"
-          >
-            View Form ↗
-          </a>
-        )}
+        <button
+          type="button"
+          onClick={handleOpenBrowser}
+          disabled={openingBrowser}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--accent-blue-light)',
+            cursor: openingBrowser ? 'wait' : 'pointer',
+            padding: 0,
+            fontSize: '0.85rem',
+            fontWeight: 500,
+            textDecoration: 'underline',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+          title="Click to launch live pre-filled Chromium window on your screen"
+        >
+          {openingBrowser ? '⏳ Opening Filled Form...' : '⚡ View Filled Form ↗'}
+        </button>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {isDone && (
