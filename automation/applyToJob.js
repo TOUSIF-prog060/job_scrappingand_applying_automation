@@ -25,12 +25,13 @@ function loadCandidate() {
  *
  * @param {Object} job — a job record from the database
  * @param {Function} [onStatusUpdate] — status progress callback
- * @param {Object} [options] — options object: { allowSubmit?: boolean }
+ * @param {Object} [options] — options object: { allowSubmit?: boolean, keepOpen?: boolean }
  * @returns {{ success: boolean, screenshotPath?: string, reason?: string }}
  */
 async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
   const candidate = loadCandidate();
   const allowSubmit = options.allowSubmit || process.env.ENABLE_REAL_SUBMIT === 'true';
+  const keepOpen = options.keepOpen !== undefined ? options.keepOpen : (process.env.KEEP_BROWSER_OPEN !== 'false');
   let browser = null;
 
   console.log(`\n[ApplyToJob] Starting: "${job.title}" (${job.id})`);
@@ -38,9 +39,9 @@ async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
   console.log(`  Mode: ${allowSubmit ? '⚡ REAL SUBMISSION ENABLED' : '🛡️ PRE-SUBMISSION PROOF ONLY'}`);
 
   try {
-    // Step 1: Launch browser
+    // Step 1: Launch browser (visible Chromium window on desktop)
     onStatusUpdate('PROCESSING');
-    const { browser: b, page } = await launchBrowser();
+    const { browser: b, page } = await launchBrowser({ headless: false });
     browser = b;
 
     // Step 2: Navigate to application URL
@@ -55,6 +56,7 @@ async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
     // Step 3: Check for CAPTCHA immediately
     if (await detectCaptcha(page)) {
       const screenshotPath = await captureScreenshot(page, job.id).catch(() => null);
+      if (!keepOpen) await closeBrowser(browser);
       return {
         success: false,
         reason: 'CAPTCHA or bot protection detected',
@@ -94,6 +96,7 @@ async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
 
       if (await detectCaptcha(page)) {
         const screenshotPath = await captureScreenshot(page, job.id).catch(() => null);
+        if (!keepOpen) await closeBrowser(browser);
         return {
           success: false,
           reason: 'CAPTCHA detected after navigation',
@@ -113,15 +116,22 @@ async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
         console.log(`  [Submit] Confirmation status: ${confirmed ? 'Confirmed ✓' : 'Submitted'}`);
       }
     } else {
-      console.log(`  [Safety] Stopping before submission (pre-submission proof mode).`);
+      console.log(`  [Safety] Form filled! Stopping before submission (pre-submission proof mode).`);
     }
 
     // Step 6: Capture proof screenshot
     console.log(`  [Final] Capturing screenshot...`);
     const screenshotPath = await captureScreenshot(page, job.id);
 
-    await closeBrowser(browser);
-    browser = null;
+    // Keep browser window open on user's desktop for inspection & manual submission
+    if (keepOpen) {
+      console.log(`\n  🖥️  [LIVE BROWSER OPEN] Form filled successfully!`);
+      console.log(`      The Playwright browser window is open on your desktop screen.`);
+      console.log(`      You can review all filled fields, make any edits, and submit directly.\n`);
+    } else {
+      await closeBrowser(browser);
+      browser = null;
+    }
 
     return { success: true, screenshotPath };
   } catch (err) {
@@ -135,7 +145,7 @@ async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
           errScreenshotPath = await captureScreenshot(pages[0], `${job.id}_error`).catch(() => null);
         }
       } catch (_) {}
-      await closeBrowser(browser);
+      if (!keepOpen) await closeBrowser(browser);
     }
 
     return {

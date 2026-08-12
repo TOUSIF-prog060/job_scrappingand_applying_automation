@@ -1,20 +1,23 @@
 const { chromium } = require('playwright');
 
-const HEADLESS = process.env.HEADLESS !== 'false'; // default headless, set HEADLESS=false to see browser
+// Default to HEADLESS = false (Headed mode) so the user can see the browser window fill out the form
+const HEADLESS = process.env.HEADLESS === 'true';
 
 /**
- * Launch a new browser context (isolated profile — no cookie bleed between runs).
+ * Launch a new browser context (isolated profile).
  * Returns { browser, context, page }.
  */
-async function launchBrowser() {
+async function launchBrowser(options = {}) {
+  const isHeadless = options.headless !== undefined ? options.headless : HEADLESS;
+
   const browser = await chromium.launch({
-    headless: HEADLESS,
+    headless: isHeadless,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled', // reduce bot-detection signals
+      '--disable-blink-features=AutomationControlled',
     ],
-    slowMo: HEADLESS ? 0 : 50, // slight delay in headed mode to watch it work
+    slowMo: isHeadless ? 0 : 100, // 100ms typing delay in headed mode so user sees form filling
   });
 
   const context = await browser.newContext({
@@ -30,14 +33,12 @@ async function launchBrowser() {
 }
 
 /**
- * Cleanly close browser and context, ignoring errors (the browser may already be gone).
+ * Cleanly close browser.
  */
 async function closeBrowser(browser) {
   try {
     if (browser) await browser.close();
-  } catch (_) {
-    // ignore
-  }
+  } catch (_) {}
 }
 
 module.exports = { launchBrowser, closeBrowser };
