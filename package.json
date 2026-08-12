@@ -1,0 +1,20 @@
+{
+  "name": "job-automation-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated Job Application Dashboard — scrapes, fills, and screenshots Greenhouse applications",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "npm run build --workspace=frontend",
+    "start": "node backend/server.js",
+    "start:prod": "cross-env NODE_ENV=production node backend/server.js",
+    "install:all": "npm install --workspace=backend && npm install --workspace=frontend",
+    "scrape": "node backend/scripts/runScraper.js"
+  }
+}

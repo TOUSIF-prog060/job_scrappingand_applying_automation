@@ -1,0 +1,9 @@
+{
+  "name": "automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright automation engine for job applications",
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-journal
+screenshots/
+!screenshots/.gitkeep
+data/resume.pdf
+.DS_Store
+Thumbs.db
