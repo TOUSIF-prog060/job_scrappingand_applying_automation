@@ -217,6 +217,7 @@ export default function Dashboard() {
           ) : (
             <JobList
               jobs={filteredJobs}
+              candidate={candidate}
               allowSubmit={allowSubmit}
               onApplyStart={(id) =>
                 addToast(

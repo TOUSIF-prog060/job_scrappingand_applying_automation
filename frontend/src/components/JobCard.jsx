@@ -2,11 +2,25 @@ import { useState } from 'react';
 import StatusBadge from './StatusBadge';
 import { applyToJob } from '../api/jobsApi';
 
-const STATUS_ORDER = ['NOT_STARTED', 'PROCESSING', 'FORM_FILLED', 'READY_FOR_SUBMISSION', 'SCREENSHOT_CAPTURED', 'FAILED'];
-
 const PROCESSING_STATUSES = new Set(['PROCESSING', 'FORM_FILLED', 'READY_FOR_SUBMISSION']);
 
-export default function JobCard({ job, allowSubmit = false, onApplyStart, onScreenshot }) {
+function buildPreFilledUrl(baseUrl, candidate) {
+  if (!baseUrl) return '#';
+  if (!candidate) return baseUrl;
+
+  try {
+    const url = new URL(baseUrl);
+    if (candidate.firstName) url.searchParams.set('first_name', candidate.firstName);
+    if (candidate.lastName) url.searchParams.set('last_name', candidate.lastName);
+    if (candidate.email) url.searchParams.set('email', candidate.email);
+    if (candidate.phone) url.searchParams.set('phone', candidate.phone);
+    return url.toString();
+  } catch (_) {
+    return baseUrl;
+  }
+}
+
+export default function JobCard({ job, candidate, allowSubmit = false, onApplyStart, onScreenshot }) {
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState(null);
 
@@ -38,6 +52,7 @@ export default function JobCard({ job, allowSubmit = false, onApplyStart, onScre
   }
 
   const initials = (job.company || '?').charAt(0).toUpperCase();
+  const formUrl = buildPreFilledUrl(job.application_url || job.job_url, candidate);
 
   return (
     <article className={`job-card ${statusClass}`}>
@@ -70,14 +85,14 @@ export default function JobCard({ job, allowSubmit = false, onApplyStart, onScre
       )}
 
       <div className="card-footer">
-        {(job.application_url || job.job_url) && (
+        {formUrl && (
           <a
-            href={job.application_url || job.job_url}
+            href={formUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="card-link"
           >
-            {isDone ? 'Open Form ↗' : 'View Form ↗'}
+            {isDone ? 'Open Pre-filled Form ↗' : 'View Form ↗'}
           </a>
         )}
 

@@ -1,6 +1,6 @@
 import JobCard from './JobCard';
 
-export default function JobList({ jobs, allowSubmit = false, onApplyStart, onScreenshot }) {
+export default function JobList({ jobs, candidate, allowSubmit = false, onApplyStart, onScreenshot }) {
   if (jobs.length === 0) {
     return (
       <div className="job-grid">
@@ -19,6 +19,7 @@ export default function JobList({ jobs, allowSubmit = false, onApplyStart, onScr
         <JobCard
           key={job.id}
           job={job}
+          candidate={candidate}
           allowSubmit={allowSubmit}
           onApplyStart={onApplyStart}
           onScreenshot={onScreenshot}
