@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import StatusBadge from './StatusBadge';
-import { applyToJob } from '../api/jobsApi';
+import { applyToJob, openFilledBrowserApi } from '../api/jobsApi';
 
 const PROCESSING_STATUSES = new Set(['PROCESSING', 'FORM_FILLED', 'READY_FOR_SUBMISSION']);
 
@@ -22,6 +22,7 @@ function buildPreFilledUrl(baseUrl, candidate) {
 
 export default function JobCard({ job, candidate, allowSubmit = false, onApplyStart, onScreenshot }) {
   const [applying, setApplying] = useState(false);
+  const [openingBrowser, setOpeningBrowser] = useState(false);
   const [error, setError] = useState(null);
 
   const isProcessing = PROCESSING_STATUSES.has(job.status);
@@ -48,6 +49,18 @@ export default function JobCard({ job, candidate, allowSubmit = false, onApplySt
       setError(e.message);
     } finally {
       setApplying(false);
+    }
+  }
+
+  async function handleOpenBrowser() {
+    setOpeningBrowser(true);
+    setError(null);
+    try {
+      await openFilledBrowserApi(job.id);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOpeningBrowser(false);
     }
   }
 
@@ -92,11 +105,11 @@ export default function JobCard({ job, candidate, allowSubmit = false, onApplySt
             rel="noopener noreferrer"
             className="card-link"
           >
-            {isDone ? 'Open Pre-filled Form ↗' : 'View Form ↗'}
+            View Form ↗
           </a>
         )}
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {isDone && (
             <button
               className="btn btn-ghost btn-sm"
@@ -106,6 +119,15 @@ export default function JobCard({ job, candidate, allowSubmit = false, onApplySt
               📸 Screenshot
             </button>
           )}
+
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleOpenBrowser}
+            disabled={openingBrowser}
+            title="Launches live Chromium window with all candidate fields pre-filled by Playwright"
+          >
+            {openingBrowser ? '🖥️ Opening...' : '👁️ View Filled Form'}
+          </button>
 
           {!isDone && (
             <button

@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { getJobById } = require('../services/jobService');
-const { runApplyForJob, runApplyAll, getApplyAllProgress } = require('../services/applicationService');
+const { runApplyForJob, runApplyAll, getApplyAllProgress, openFilledBrowser } = require('../services/applicationService');
 
 async function applyToOne(req, res) {
   try {
@@ -18,6 +18,16 @@ async function applyToOne(req, res) {
 
     setImmediate(() => runApplyForJob(jobId, { allowSubmit }).catch(console.error));
     res.status(202).json({ message: 'Application started.', status: 'PROCESSING', allowSubmit });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+async function openBrowserHandler(req, res) {
+  try {
+    const { jobId } = req.params;
+    openFilledBrowser(jobId).catch(console.error);
+    res.status(202).json({ message: 'Opening filled browser window on desktop screen...' });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
@@ -81,4 +91,4 @@ async function applyAllProgress(req, res) {
   }
 }
 
-module.exports = { applyToOne, applyToAll, getStatus, getScreenshot, applyAllProgress };
+module.exports = { applyToOne, openBrowserHandler, applyToAll, getStatus, getScreenshot, applyAllProgress };

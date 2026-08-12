@@ -38,6 +38,14 @@ export async function applyToJob(jobId, allowSubmit = false) {
   return handleResponse(res);
 }
 
+export async function openFilledBrowserApi(jobId) {
+  const res = await fetch(`${BASE}/applications/${jobId}/open-browser`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return handleResponse(res);
+}
+
 export async function applyToAll(allowSubmit = false) {
   const res = await fetch(`${BASE}/applications/apply-all`, {
     method: 'POST',

@@ -1,5 +1,9 @@
+const path = require('path');
+const fs = require('fs');
 const { getJobById, updateJobStatus, getJobsByStatus } = require('./jobService');
 const { applyToJob } = require('../../automation/applyToJob');
+const { launchBrowser } = require('../../automation/browserManager');
+const { fillVisibleFields } = require('../../automation/formFiller');
 
 // Track apply-all progress in memory
 let applyAllProgress = { running: false, total: 0, completed: 0, failed: 0, startedAt: null };
@@ -33,6 +37,30 @@ async function runApplyForJob(jobId, options = {}) {
       failure_reason: `Automation engine error: ${err.message}`,
     });
   }
+}
+
+/**
+ * Open a live interactive Playwright Chromium window on desktop for a job application,
+ * populate all candidate fields (Name, Email, Phone, Resume, Gender, Race, Disability, Veteran, Q&A),
+ * and leave the browser window open on screen for user inspection & submission.
+ */
+async function openFilledBrowser(jobId) {
+  const job = getJobById(jobId);
+  const candidatePath = path.resolve(__dirname, '..', '..', 'data', 'candidate.json');
+  const candidate = JSON.parse(fs.readFileSync(candidatePath, 'utf8'));
+
+  console.log(`[OpenFilledBrowser] Launching live interactive Chromium window for: "${job.title}"`);
+  console.log(`  URL: ${job.application_url}`);
+
+  const { page } = await launchBrowser({ headless: false });
+  await page.goto(job.application_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForTimeout(1500);
+
+  console.log(`[OpenFilledBrowser] Auto-filling candidate fields in live browser window...`);
+  await fillVisibleFields(page, candidate);
+  console.log(`[OpenFilledBrowser] Form filled! Browser window remains open on desktop screen.`);
+
+  return { message: 'Filled browser window launched on desktop screen.' };
 }
 
 /**
@@ -76,4 +104,4 @@ function getApplyAllProgress() {
   return { ...applyAllProgress };
 }
 
-module.exports = { runApplyForJob, runApplyAll, getApplyAllProgress };
+module.exports = { runApplyForJob, runApplyAll, getApplyAllProgress, openFilledBrowser };

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   applyToOne,
+  openBrowserHandler,
   applyToAll,
   getStatus,
   getScreenshot,
@@ -10,6 +11,9 @@ const {
 
 // POST /api/applications/:jobId/apply — apply to one job (async)
 router.post('/:jobId/apply', applyToOne);
+
+// POST /api/applications/:jobId/open-browser — launch live pre-filled Chromium window
+router.post('/:jobId/open-browser', openBrowserHandler);
 
 // POST /api/applications/apply-all — apply to all NOT_STARTED (async)
 router.post('/apply-all', applyToAll);
