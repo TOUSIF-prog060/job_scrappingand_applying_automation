@@ -16,5 +16,8 @@
     "start:prod": "cross-env NODE_ENV=production node backend/server.js",
     "install:all": "npm install --workspace=backend && npm install --workspace=frontend",
     "scrape": "node backend/scripts/runScraper.js"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4"
   }
 }
