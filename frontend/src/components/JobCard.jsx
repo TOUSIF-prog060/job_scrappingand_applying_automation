@@ -70,14 +70,14 @@ export default function JobCard({ job, allowSubmit = false, onApplyStart, onScre
       )}
 
       <div className="card-footer">
-        {job.job_url && (
+        {(job.application_url || job.job_url) && (
           <a
-            href={job.job_url}
+            href={job.application_url || job.job_url}
             target="_blank"
             rel="noopener noreferrer"
             className="card-link"
           >
-            View Job ↗
+            {isDone ? 'Open Form ↗' : 'View Form ↗'}
           </a>
         )}
 
