@@ -6,6 +6,7 @@ const fs = require('fs');
 const { launchBrowser, closeBrowser } = require('./browserManager');
 const {
   fillVisibleFields,
+  validateFilledForm,
   detectCaptcha,
   clickContinueIfPresent,
   clickSubmit,
@@ -28,10 +29,10 @@ function loadCandidate() {
  * @param {Object} [options] — options object: { allowSubmit?: boolean, keepOpen?: boolean }
  * @returns {{ success: boolean, screenshotPath?: string, reason?: string }}
  */
-async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
+async function applyToJob(job, onStatusUpdate = () => { }, options = {}) {
   const candidate = loadCandidate();
   const allowSubmit = options.allowSubmit || process.env.ENABLE_REAL_SUBMIT === 'true';
-  const keepOpen = options.keepOpen !== undefined ? options.keepOpen : (process.env.KEEP_BROWSER_OPEN !== 'false');
+  const keepOpen = options.keepOpen === true || process.env.KEEP_BROWSER_OPEN === 'true';
   let browser = null;
 
   console.log(`\n[ApplyToJob] Starting: "${job.title}" (${job.id})`);
@@ -67,12 +68,13 @@ async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
     // Step 4: Multi-step form filling loop
     let stepCount = 0;
     const MAX_STEPS = 10;
+    let lastFillResult = null;
 
     while (stepCount < MAX_STEPS) {
       stepCount++;
       console.log(`  [Step ${stepCount}] Filling form fields...`);
 
-      await fillVisibleFields(page, candidate);
+      lastFillResult = await fillVisibleFields(page, candidate);
       onStatusUpdate('FORM_FILLED');
 
       await page.waitForTimeout(1000);
@@ -103,6 +105,19 @@ async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
           screenshotPath,
         };
       }
+    }
+
+    // Validate form completion before declaring success
+    const validation = await validateFilledForm(page);
+    if (!validation.valid && (!lastFillResult || lastFillResult.filled === 0)) {
+      console.warn(`  [Validation Failed] Required fields missing: ${validation.missingFields.join(', ')}`);
+      const screenshotPath = await captureScreenshot(page, `${job.id}_failed`).catch(() => null);
+      if (!keepOpen) await closeBrowser(browser);
+      return {
+        success: false,
+        reason: `Required form fields could not be filled (${validation.missingFields.join(', ')})`,
+        screenshotPath,
+      };
     }
 
     // Step 5: Real submission (if enabled) OR pre-submission proof
@@ -144,7 +159,7 @@ async function applyToJob(job, onStatusUpdate = () => {}, options = {}) {
         if (pages.length > 0) {
           errScreenshotPath = await captureScreenshot(pages[0], `${job.id}_error`).catch(() => null);
         }
-      } catch (_) {}
+      } catch (_) { }
       if (!keepOpen) await closeBrowser(browser);
     }
 

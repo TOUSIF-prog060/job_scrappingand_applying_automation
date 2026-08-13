@@ -31,7 +31,19 @@
     "AI",
     "Machine Learning",
     "Deep Learning",
-    "TensorFlow"
+    "TensorFlow",
+    "FastAPI",
+    "OpenAI",
+    "LangChain",
+    "LlamaIndex",
+    "RAG",
+    "Chroma",
+    "Pandas",
+    "NumPy",
+    "Scikit-Learn",
+    "Keras",
+    "Hugging Face",
+    "Transformers"
   ],
   "workAuthorization": "Yes",
   "requiresSponsorship": "No",
@@ -42,5 +54,7 @@
   "resumePath": "./data/resume.pdf",
   "salary": "80000",
   "startDate": "Immediately",
-  "referral": ""
+  "referral": "",
+  "additionalInfo": "N/A - No additional requirements.",
+  "resumeFileName": "Final Tousif_Raza_AIML_Resume.pdf"
 }

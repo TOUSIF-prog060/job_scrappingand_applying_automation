@@ -12,6 +12,7 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "npm run build --workspace=frontend",
+    "test": "node --test tests/*.test.js",
     "start": "node backend/server.js",
     "start:prod": "cross-env NODE_ENV=production node backend/server.js",
     "install:all": "npm install --workspace=backend && npm install --workspace=frontend",

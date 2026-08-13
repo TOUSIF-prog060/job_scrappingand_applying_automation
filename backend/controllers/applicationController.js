@@ -1,7 +1,11 @@
 const path = require('path');
 const fs = require('fs');
 const { getJobById } = require('../services/jobService');
-const { runApplyForJob, runApplyAll, getApplyAllProgress, openFilledBrowser } = require('../services/applicationService');
+const {
+  runApplyForJob,
+  runApplyAll,
+  getApplyAllProgress,
+} = require('../services/applicationService');
 
 async function applyToOne(req, res) {
   try {
@@ -9,7 +13,7 @@ async function applyToOne(req, res) {
     const { allowSubmit = false } = req.body || {};
     const job = getJobById(jobId);
 
-    if (job.status === 'SCREENSHOT_CAPTURED') {
+    if (job.status === 'SCREENSHOT_CAPTURED' || job.status === 'READY_FOR_REVIEW') {
       return res.json({ message: 'Already completed.', status: job.status });
     }
     if (job.status === 'PROCESSING') {
@@ -23,24 +27,24 @@ async function applyToOne(req, res) {
   }
 }
 
-async function openBrowserHandler(req, res) {
-  try {
-    const { jobId } = req.params;
-    openFilledBrowser(jobId).catch(console.error);
-    res.status(202).json({ message: 'Opening filled browser window on desktop screen...' });
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
-  }
-}
-
 async function applyToAll(req, res) {
   try {
-    const { allowSubmit = false } = req.body || {};
-    const result = await runApplyAll({ allowSubmit });
+    const { allowSubmit = false, jobIds = [] } = req.body || {};
+    const result = await runApplyAll({ allowSubmit, jobIds });
     if (result.alreadyRunning) {
       return res.status(409).json({ error: 'Apply-all is already running.' });
     }
     res.status(202).json({ ...result, allowSubmit });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function stopApplyAllController(req, res) {
+  try {
+    const { stopApplyAll } = require('../services/applicationService');
+    const result = stopApplyAll();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -63,16 +67,34 @@ async function getStatus(req, res) {
 
 async function getScreenshot(req, res) {
   try {
-    const job = getJobById(req.params.jobId);
-    if (!job.screenshot_path) {
-      return res.status(404).json({ error: 'No screenshot available for this job.' });
+    const { jobId } = req.params;
+    const screenshotRoot = path.join(__dirname, '..', '..', 'screenshots');
+
+    let filePath = null;
+    const job = getJobById(jobId);
+    if (job && job.screenshot_path) {
+      const filename = path.basename(job.screenshot_path);
+      const target = path.join(screenshotRoot, filename);
+      if (fs.existsSync(target)) filePath = target;
     }
 
-    const screenshotRoot = path.join(__dirname, '..', '..', 'screenshots');
-    const filename = path.basename(job.screenshot_path);
-    const filePath = path.join(screenshotRoot, filename);
+    if (!filePath) {
+      const possibleFiles = [
+        `${jobId}.png`,
+        `${jobId}_proof.png`,
+        `${jobId}_final.png`,
+        `${jobId}.jpg`
+      ];
+      for (const fname of possibleFiles) {
+        const candidatePath = path.join(screenshotRoot, fname);
+        if (fs.existsSync(candidatePath)) {
+          filePath = candidatePath;
+          break;
+        }
+      }
+    }
 
-    if (!fs.existsSync(filePath)) {
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'Screenshot file not found on disk.' });
     }
 
@@ -91,4 +113,11 @@ async function applyAllProgress(req, res) {
   }
 }
 
-module.exports = { applyToOne, openBrowserHandler, applyToAll, getStatus, getScreenshot, applyAllProgress };
+module.exports = {
+  applyToOne,
+  applyToAll,
+  stopApplyAllController,
+  getStatus,
+  getScreenshot,
+  applyAllProgress,
+};

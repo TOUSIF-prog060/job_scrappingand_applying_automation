@@ -12,86 +12,131 @@ function isSafeToClick(buttonText = '') {
 }
 
 /**
- * Known direct Greenhouse field mappings by selector.
+ * Known direct Greenhouse field selector mappings.
  */
-const GREENHOUSE_DIRECT_FIELDS = [
-  { selector: '#first_name, input[name="job_application[first_name]"], input[id*="first_name"]', key: 'firstName' },
-  { selector: '#last_name, input[name="job_application[last_name]"], input[id*="last_name"]', key: 'lastName' },
-  { selector: '#email, input[name="job_application[email]"], input[id*="email"]', key: 'email' },
-  { selector: '#phone, input[name="job_application[phone]"], input[id*="phone"]', key: 'phone' },
-  { selector: '#location, input[name="job_application[location]"], input[id*="location"]', key: 'location' },
-  { selector: 'input[name*="linkedin"], input[id*="linkedin"]', key: 'linkedin' },
-  { selector: 'input[name*="github"], input[id*="github"]', key: 'github' },
-  { selector: 'input[name*="website"], input[id*="website"], input[name*="portfolio"]', key: 'website' },
+const DIRECT_MAPPINGS = [
+  { selectors: ['#first_name', '#job_application_first_name', 'input[name*="first_name"]', 'input[aria-label*="First Name" i]'], key: 'firstName' },
+  { selectors: ['#last_name', '#job_application_last_name', 'input[name*="last_name"]', 'input[aria-label*="Last Name" i]'], key: 'lastName' },
+  { selectors: ['#email', '#job_application_email', 'input[name*="email"]', 'input[aria-label*="Email" i]'], key: 'email' },
+  { selectors: ['#phone', '#job_application_phone', 'input[name*="phone"]', 'input[type="tel"]', 'input[aria-label*="Phone" i]'], key: 'phone' },
+  { selectors: ['#candidate-location', '#location', '#job_application_location', 'input[name*="location"]', 'input[placeholder*="location" i]'], key: 'location' },
+  { selectors: ['input[aria-label*="LinkedIn" i]', 'input[id*="linkedin" i]', 'input[name*="linkedin" i]'], key: 'linkedin' },
+  { selectors: ['input[aria-label*="GitHub" i]', 'input[id*="github" i]', 'input[name*="github" i]'], key: 'github' },
+  { selectors: ['input[aria-label*="Website" i]', 'input[aria-label*="Portfolio" i]', 'input[id*="website" i]', 'input[name*="website" i]'], key: 'website' },
 ];
 
 /**
- * Known direct Greenhouse EEO & demographic dropdown selectors.
+ * Known direct Greenhouse EEO & demographic selectors.
  */
-const GREENHOUSE_EEO_SELECTS = [
-  { selector: '#gender, select[name*="gender"], select[id*="gender"]', key: 'gender' },
-  { selector: '#race, #ethnicity, select[name*="race"], select[name*="ethnicity"], select[id*="race"]', key: 'ethnicity' },
-  { selector: '#veteran_status, select[name*="veteran"], select[id*="veteran"]', key: 'veteranStatus' },
-  { selector: '#disability_status, select[name*="disability"], select[id*="disability"]', key: 'disabilityStatus' },
-  { selector: 'select[name*="authorized"], select[name*="authorization"], select[id*="authorized"]', key: 'workAuthorization' },
-  { selector: 'select[name*="sponsorship"], select[name*="visa"], select[id*="sponsorship"]', key: 'requiresSponsorship' },
+const EEO_MAPPINGS = [
+  { selectors: ['#gender', 'select[name*="gender"]', 'input[name*="gender"]'], key: 'gender' },
+  { selectors: ['#race', '#ethnicity', '#hispanic_ethnicity', 'select[name*="race"]', 'select[name*="ethnicity"]'], key: 'ethnicity' },
+  { selectors: ['#veteran_status', 'select[name*="veteran"]', 'input[name*="veteran"]'], key: 'veteranStatus' },
+  { selectors: ['#disability_status', 'select[name*="disability"]', 'input[name*="disability"]'], key: 'disabilityStatus' },
+  { selectors: ['select[name*="authorized"]', 'select[name*="authorization"]', 'input[name*="authorized"]'], key: 'workAuthorization' },
+  { selectors: ['select[name*="sponsorship"]', 'select[name*="visa"]', 'input[name*="sponsorship"]'], key: 'requiresSponsorship' },
 ];
+
+/**
+ * Safely fill an input element with Playwright, handling React/Controlled input events.
+ */
+async function safelyFillInput(el, value) {
+  try {
+    await el.scrollIntoViewIfNeeded().catch(() => {});
+    await el.focus().catch(() => {});
+    await el.fill(value);
+    await el.dispatchEvent('input').catch(() => {});
+    await el.dispatchEvent('change').catch(() => {});
+    await el.blur().catch(() => {});
+    return true;
+  } catch (_) {
+    try {
+      await el.type(value, { delay: 10 });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+}
 
 /**
  * Detect and fill all visible form fields on the current page.
- * Returns { filled: number, skipped: string[] } — filled count and skipped labels.
  */
 async function fillVisibleFields(page, candidate) {
   const filled = [];
   const skipped = [];
 
-  // 1. Direct Greenhouse Known Input IDs Fill
-  for (const item of GREENHOUSE_DIRECT_FIELDS) {
+  // 1. Direct Greenhouse Known Input Selectors Fill
+  for (const item of DIRECT_MAPPINGS) {
     const value = getCandidateValue(candidate, item.key);
     if (!value) continue;
 
-    try {
-      const el = await page.$(item.selector);
-      if (el && (await el.isVisible())) {
-        await el.scrollIntoViewIfNeeded();
-        await el.fill(value);
-        filled.push(item.key);
-      }
-    } catch (_) {}
-  }
-
-  // 2. Direct Greenhouse EEO & Demographic Dropdowns
-  for (const item of GREENHOUSE_EEO_SELECTS) {
-    const value = getCandidateValue(candidate, item.key);
-    if (!value) continue;
-
-    try {
-      const sel = await page.$(item.selector);
-      if (sel && (await sel.isVisible())) {
-        await sel.scrollIntoViewIfNeeded();
-        const options = await sel.$$eval('option', (opts) =>
-          opts.map((o) => ({ value: o.value, text: o.textContent.trim() }))
-        );
-        const best = options.find(
-          (o) =>
-            o.text.toLowerCase().includes(value.toLowerCase()) ||
-            (o.value && o.value.toLowerCase().includes(value.toLowerCase()))
-        );
-        if (best) {
-          await sel.selectOption({ value: best.value });
-          filled.push(`EEO: ${item.key}`);
+    for (const sel of item.selectors) {
+      try {
+        const el = await page.$(sel);
+        if (el && (await el.isVisible().catch(() => false))) {
+          const current = await el.inputValue().catch(() => '');
+          if (!current || current.trim().length === 0) {
+            const ok = await safelyFillInput(el, value);
+            if (ok) {
+              filled.push(item.key);
+              break;
+            }
+          } else {
+            filled.push(item.key);
+            break;
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
   }
 
-  // 3. Generic Text / Email / Tel / URL / Number inputs
+  // 2. Direct Greenhouse EEO & Demographic Controls Fill
+  for (const item of EEO_MAPPINGS) {
+    const value = getCandidateValue(candidate, item.key);
+    if (!value) continue;
+
+    for (const sel of item.selectors) {
+      try {
+        const el = await page.$(sel);
+        if (el && (await el.isVisible().catch(() => false))) {
+          const tag = await el.evaluate((e) => e.tagName.toLowerCase()).catch(() => '');
+          if (tag === 'select') {
+            const options = await el.$$eval('option', (opts) =>
+              opts.map((o) => ({ value: o.value, text: o.textContent.trim() }))
+            );
+            const best = options.find(
+              (o) =>
+                o.text.toLowerCase().includes(value.toLowerCase()) ||
+                (o.value && o.value.toLowerCase().includes(value.toLowerCase()))
+            );
+            if (best) {
+              await el.selectOption({ value: best.value });
+              filled.push(`EEO: ${item.key}`);
+              break;
+            }
+          } else {
+            const ok = await safelyFillInput(el, value);
+            if (ok) {
+              filled.push(`EEO: ${item.key}`);
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  // 3. Generic Text / Email / Tel / Search / Number inputs
   const inputs = await page.$$(
     'input:not([type="hidden"]):not([type="file"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"])'
   );
   for (const input of inputs) {
     try {
-      const currentValue = await input.inputValue();
+      const isVis = await input.isVisible().catch(() => false);
+      if (!isVis) continue;
+
+      const currentValue = await input.inputValue().catch(() => '');
       if (currentValue && currentValue.trim().length > 0) continue;
 
       const label = await getLabelForElement(page, input);
@@ -106,19 +151,21 @@ async function fillVisibleFields(page, candidate) {
       const value = getCandidateValue(candidate, match.key);
       if (!value) continue;
 
-      await input.scrollIntoViewIfNeeded();
-      await input.fill(value);
-      filled.push(label);
+      const ok = await safelyFillInput(input, value);
+      if (ok) filled.push(label);
     } catch (e) {
       skipped.push(`Input fill error: ${e.message}`);
     }
   }
 
   // 4. Textareas & Essay Questions
-  const textareas = await page.$$('textarea');
+  const textareas = await page.$$('textarea:not([name*="recaptcha"])');
   for (const ta of textareas) {
     try {
-      const currentValue = await ta.inputValue();
+      const isVis = await ta.isVisible().catch(() => false);
+      if (!isVis) continue;
+
+      const currentValue = await ta.inputValue().catch(() => '');
       if (currentValue && currentValue.trim().length > 0) continue;
 
       const label = await getLabelForElement(page, ta);
@@ -129,24 +176,25 @@ async function fillVisibleFields(page, candidate) {
         if (match) value = getCandidateValue(candidate, match.key);
       }
 
-      // Fallback for custom question textareas if unmapped
       if (!value) {
         value = candidate.coverLetter || candidate.experience || 'N/A';
       }
 
-      await ta.scrollIntoViewIfNeeded();
-      await ta.fill(value);
-      filled.push(label || 'Custom Text Question');
+      const ok = await safelyFillInput(ta, value);
+      if (ok) filled.push(label || 'Custom Text Question');
     } catch (e) {
       skipped.push(`Textarea fill error: ${e.message}`);
     }
   }
 
-  // 5. Generic Selects (Dropdowns)
+  // 5. Select Dropdowns
   const selects = await page.$$('select');
   for (const sel of selects) {
     try {
-      const currentVal = await sel.evaluate((s) => s.value);
+      const isVis = await sel.isVisible().catch(() => false);
+      if (!isVis) continue;
+
+      const currentVal = await sel.evaluate((s) => s.value).catch(() => '');
       const label = await getLabelForElement(page, sel);
       if (!label) continue;
 
@@ -170,7 +218,6 @@ async function fillVisibleFields(page, candidate) {
         }
       }
 
-      // If required dropdown is still default/empty, select first non-empty option
       if (!currentVal || currentVal === '' || currentVal === '-1') {
         const validOpt = options.find((o) => o.value !== '' && o.value !== '-1' && !o.text.toLowerCase().includes('select'));
         if (validOpt) {
@@ -183,19 +230,42 @@ async function fillVisibleFields(page, candidate) {
     }
   }
 
-  // 6. File inputs — resume upload
-  const fileInputs = await page.$$('input[type="file"]');
+  // 6. File inputs — resume & cover letter uploads
+  const fileInputs = await page.$$('input[type="file"], #resume, #cover_letter');
+  const dataDir = path.resolve(__dirname, '..', 'data');
+
   for (const fi of fileInputs) {
     try {
-      const resumeAbsPath = path.resolve(__dirname, '..', candidate.resumePath || './data/resume.pdf');
-      if (fs.existsSync(resumeAbsPath)) {
-        await fi.setInputFiles(resumeAbsPath);
-        filled.push('resume upload');
+      const label = (await getLabelForElement(page, fi)) || '';
+      const name = (await fi.getAttribute('name')) || '';
+      const id = (await fi.getAttribute('id')) || '';
+      const combo = `${label} ${name} ${id}`.toLowerCase();
+
+      let targetFile = null;
+      let targetType = 'resume';
+
+      if (combo.includes('cover') || combo.includes('letter')) {
+        targetType = 'cover letter';
+        const coverFiles = fs.existsSync(dataDir) ? fs.readdirSync(dataDir).filter((f) => f.startsWith('cover_letter.')) : [];
+        if (coverFiles.length > 0) {
+          targetFile = path.join(dataDir, coverFiles[0]);
+        }
       } else {
-        skipped.push('resume upload (file not found)');
+        const resumeFiles = fs.existsSync(dataDir) ? fs.readdirSync(dataDir).filter((f) => f.startsWith('resume.')) : [];
+        if (resumeFiles.length > 0) {
+          targetFile = path.join(dataDir, resumeFiles[0]);
+        } else if (candidate.resumePath) {
+          const fallback = path.resolve(__dirname, '..', candidate.resumePath);
+          if (fs.existsSync(fallback)) targetFile = fallback;
+        }
+      }
+
+      if (targetFile && fs.existsSync(targetFile)) {
+        await fi.setInputFiles(targetFile);
+        filled.push(`${targetType} file upload (${path.basename(targetFile)})`);
       }
     } catch (e) {
-      skipped.push(`resume upload error: ${e.message}`);
+      skipped.push(`file upload error: ${e.message}`);
     }
   }
 
@@ -225,6 +295,13 @@ async function getLabelForElement(page, element) {
 
     const name = await element.getAttribute('name');
     if (name && name.trim()) return name.trim();
+
+    // Check parent label tag text
+    const parentText = await element.evaluate((el) => {
+      const parentLabel = el.closest('label');
+      return parentLabel ? parentLabel.textContent.trim() : null;
+    });
+    if (parentText) return parentText;
 
     return null;
   } catch (_) {
@@ -287,7 +364,7 @@ async function clickContinueIfPresent(page) {
     if (CONTINUE_PATTERNS.some((p) => lower.includes(p))) {
       await btn.click();
       console.log(`  [FormFiller] Clicked continue button: "${text.trim()}"`);
-      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForLoadState('domcontentloaded').catch(() => { });
       return true;
     }
   }
@@ -314,10 +391,10 @@ async function clickSubmit(page) {
         console.log(`  [FormFiller] Submitting application via selector: "${sel}"`);
         await btn.scrollIntoViewIfNeeded();
         await btn.click();
-        await page.waitForLoadState('domcontentloaded').catch(() => {});
+        await page.waitForLoadState('domcontentloaded').catch(() => { });
         return true;
       }
-    } catch (_) {}
+    } catch (_) { }
   }
   return false;
 }
@@ -360,8 +437,65 @@ async function isSubmittedConfirmationPage(page) {
   return confirmationSignals.some((s) => lower.includes(s));
 }
 
+/**
+ * Validate that mandatory required fields on the application page are actually populated.
+ * Returns { valid: boolean, missingFields: string[] }
+ */
+async function validateFilledForm(page) {
+  const missing = [];
+  try {
+    // 1. Mandatory core Greenhouse inputs check
+    const coreInputs = [
+      { sel: '#first_name, #job_application_first_name, input[name*="first_name"]', name: 'First Name' },
+      { sel: '#last_name, #job_application_last_name, input[name*="last_name"]', name: 'Last Name' },
+      { sel: '#email, #job_application_email, input[name*="email"]', name: 'Email' },
+      { sel: '#phone, #job_application_phone, input[name*="phone"]', name: 'Phone' },
+    ];
+
+    for (const item of coreInputs) {
+      const el = await page.$(item.sel);
+      if (el && (await el.isVisible().catch(() => false))) {
+        const val = await el.inputValue().catch(() => '');
+        if (!val || val.trim().length === 0) {
+          missing.push(item.name);
+        }
+      }
+    }
+
+    // 2. HTML5 required elements check
+    const requiredEls = await page.$$('input[required], select[required], textarea[required]');
+    for (const reqEl of requiredEls) {
+      const isVis = await reqEl.isVisible().catch(() => false);
+      if (!isVis) continue;
+
+      const tag = await reqEl.evaluate((e) => e.tagName.toLowerCase()).catch(() => '');
+      if (tag === 'select') {
+        const val = await reqEl.evaluate((s) => s.value).catch(() => '');
+        if (!val || val === '' || val === '-1') {
+          const label = (await getLabelForElement(page, reqEl)) || 'Required Select';
+          if (!missing.includes(label)) missing.push(label);
+        }
+      } else {
+        const val = await reqEl.inputValue().catch(() => '');
+        if (!val || val.trim().length === 0) {
+          const label = (await getLabelForElement(page, reqEl)) || 'Required Field';
+          if (!missing.includes(label)) missing.push(label);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`[FormFiller] Validation error: ${e.message}`);
+  }
+
+  return {
+    valid: missing.length === 0,
+    missingFields: missing,
+  };
+}
+
 module.exports = {
   fillVisibleFields,
+  validateFilledForm,
   detectCaptcha,
   clickContinueIfPresent,
   clickSubmit,

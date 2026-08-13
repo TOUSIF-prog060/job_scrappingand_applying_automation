@@ -26,6 +26,12 @@ async function initDb() {
   // Apply schema
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   db.run(schema);
+
+  // Safe migrations for existing databases
+  try { db.run('ALTER TABLE jobs ADD COLUMN match_score INTEGER DEFAULT 0;'); } catch (_) { }
+  try { db.run('ALTER TABLE jobs ADD COLUMN matched_skills TEXT;'); } catch (_) { }
+  try { db.run('ALTER TABLE jobs ADD COLUMN company_board TEXT;'); } catch (_) { }
+
   persist(); // save initial state
   console.log('[DB] Schema applied / verified.');
 

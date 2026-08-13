@@ -6,6 +6,7 @@ import JobList from './JobList';
 import ApplyAllButton from './ApplyAllButton';
 import CandidatePanel from './CandidatePanel';
 import ScreenshotModal from './ScreenshotModal';
+import CompanySelector from './CompanySelector';
 
 function Toast({ toasts }) {
   return (
@@ -24,6 +25,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState({});
   const [candidate, setCandidate] = useState(null);
   const [search, setSearch] = useState('');
+  const [minMatch, setMinMatch] = useState(0);
+  const [sortBy, setSortBy] = useState('match');
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
   const [screenshotJob, setScreenshotJob] = useState(null);
@@ -52,7 +55,7 @@ export default function Dashboard() {
 
   // ── Load candidate profile ─────────────────────────────────────────────────
   useEffect(() => {
-    fetchCandidate().then(setCandidate).catch(() => {});
+    fetchCandidate().then(setCandidate).catch(() => { });
   }, []);
 
   // ── Initial load + 3-second polling loop ──────────────────────────────────
@@ -68,20 +71,23 @@ export default function Dashboard() {
       try {
         const p = await fetchApplyAllProgress();
         setProgress(p);
-      } catch (_) {}
+      } catch (_) { }
     }, 2000);
     return () => clearInterval(interval);
   }, []);
 
   // ── Scrape handler ────────────────────────────────────────────────────────
-  async function handleScrape() {
+  async function handleScrape(boards = null) {
     setScraping(true);
     try {
-      await triggerScrape();
-      addToast('Scraping started! Jobs will appear shortly.', 'success');
-      setTimeout(loadJobs, 2000);
-      setTimeout(loadJobs, 5000);
-      setTimeout(loadJobs, 10000);
+      await triggerScrape(boards);
+      const msg = Array.isArray(boards)
+        ? `Multi-company scraping started for ${boards.length} boards!`
+        : 'Multi-company scraping started!';
+      addToast(msg, 'success');
+      setTimeout(loadJobs, 2500);
+      setTimeout(loadJobs, 6000);
+      setTimeout(loadJobs, 12000);
     } catch (e) {
       addToast('Scrape failed: ' + e.message, 'error');
     } finally {
@@ -89,15 +95,33 @@ export default function Dashboard() {
     }
   }
 
-  // ── Search filter (client-side) ────────────────────────────────────────────
-  const filteredJobs = jobs.filter((j) => {
-    const q = search.toLowerCase();
-    return (
-      j.title?.toLowerCase().includes(q) ||
-      j.company?.toLowerCase().includes(q) ||
-      j.location?.toLowerCase().includes(q)
-    );
-  });
+  // ── Search & Relevancy filter (client-side) ────────────────────────────────
+  const filteredJobs = jobs
+    .filter((j) => {
+      const q = search.toLowerCase();
+      const matchScore = Number(j.match_score || 0);
+
+      if (minMatch > 0 && matchScore < minMatch) {
+        return false;
+      }
+
+      return (
+        j.title?.toLowerCase().includes(q) ||
+        j.company?.toLowerCase().includes(q) ||
+        j.company_board?.toLowerCase().includes(q) ||
+        j.location?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      if (sortBy === 'match') {
+        return Number(b.match_score || 0) - Number(a.match_score || 0);
+      }
+      if (sortBy === 'company') {
+        return (a.company || '').localeCompare(b.company || '');
+      }
+      // 'newest' fallback
+      return (b.created_at || '').localeCompare(a.created_at || '');
+    });
 
   return (
     <>
@@ -108,17 +132,17 @@ export default function Dashboard() {
             <div className="header-logo-icon">🤖</div>
             <div>
               <div className="header-title">JobBot Dashboard</div>
-              <div className="header-subtitle">Automated Application Engine</div>
+              <div className="header-subtitle">Multi-Company Job Scraper & Auto-Apply Engine</div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button
               id="scrape-btn"
               className="btn btn-ghost btn-sm"
-              onClick={handleScrape}
+              onClick={() => handleScrape()}
               disabled={scraping}
             >
-              {scraping ? <><span className="spinner" /> Scraping...</> : '🕷️ Scrape Jobs'}
+              {scraping ? <><span className="spinner" /> Scraping...</> : '🕷️ Scrape All Presets'}
             </button>
           </div>
         </div>
@@ -133,7 +157,7 @@ export default function Dashboard() {
               <span className="gradient-text">Auto-Apply</span> Dashboard
             </h1>
             <p className="hero-sub">
-              Scrape, fill, and screenshot job applications — hands free.
+              Scrape top Greenhouse company boards, rank jobs by resume match score, and apply hands-free.
             </p>
             <StatsBar stats={stats} />
           </section>
@@ -144,20 +168,69 @@ export default function Dashboard() {
             onResumeUploaded={(updated) => {
               if (updated) {
                 setCandidate(updated);
-                addToast(`Profile updated from resume: ${updated.firstName} ${updated.lastName}`, 'success');
+                addToast(`Profile updated & job match scores recalculated for ${updated.firstName} ${updated.lastName}!`, 'success');
+                setTimeout(loadJobs, 1000);
               } else {
-                fetchCandidate().then(setCandidate).catch(() => {});
+                fetchCandidate().then(setCandidate).catch(() => { });
               }
             }}
             onCandidateUpdated={(updated) => {
               setCandidate(updated);
-              addToast('Candidate profile & EEO answers saved!', 'success');
+              addToast('Candidate profile & EEO answers saved! Match scores recalculated.', 'success');
+              setTimeout(loadJobs, 1000);
             }}
           />
 
-          {/* Controls Bar with Real Submission Mode Toggle */}
-          <div className="controls-bar">
+          {/* Multi-Company Scraper Board Selector */}
+          <CompanySelector onScrape={handleScrape} scraping={scraping} />
+
+          {/* Controls Bar with Relevancy Filters & Real Submission Mode Toggle */}
+          <div className="controls-bar" style={{ flexWrap: 'wrap', gap: '12px' }}>
             <SearchBar value={search} onChange={setSearch} />
+
+            {/* Relevancy Filter */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Match:</span>
+              <select
+                value={minMatch}
+                onChange={(e) => setMinMatch(Number(e.target.value))}
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--glass-border)',
+                  color: 'var(--text-primary)',
+                  padding: '5px 10px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value={0}>🎯 All Matches</option>
+                <option value={75}>🔥 High Match (≥ 75%)</option>
+                <option value={50}>⚡ Medium Match (≥ 50%)</option>
+              </select>
+            </div>
+
+            {/* Sort Order */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Sort:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--glass-border)',
+                  color: 'var(--text-primary)',
+                  padding: '5px 10px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="match">🏆 Highest Match Score</option>
+                <option value="newest">🕒 Newest First</option>
+                <option value="company">🏢 Company Name</option>
+              </select>
+            </div>
 
             {/* Mode Selector Toggle */}
             <div
@@ -169,6 +242,7 @@ export default function Dashboard() {
                 border: '1px solid var(--glass-border)',
                 padding: '4px 12px',
                 borderRadius: 'var(--radius-md)',
+                marginLeft: 'auto',
               }}
             >
               <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Mode:</span>
@@ -193,19 +267,28 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <ApplyAllButton
-              stats={stats}
-              progress={progress}
-              allowSubmit={allowSubmit}
-              onStarted={() =>
-                addToast(
-                  allowSubmit
-                    ? 'Apply-all started in REAL SUBMIT mode!'
-                    : 'Apply-all started in Proof-only mode!',
-                  'success'
-                )
-              }
-            />
+            {(() => {
+              const eligibleJobIds = filteredJobs
+                .filter((j) => j.status === 'NOT_STARTED' || j.status === 'FAILED')
+                .map((j) => j.id);
+
+              return (
+                <ApplyAllButton
+                  eligibleJobIds={eligibleJobIds}
+                  stats={stats}
+                  progress={progress}
+                  allowSubmit={allowSubmit}
+                  onStarted={() =>
+                    addToast(
+                      allowSubmit
+                        ? `Apply-all started for ${eligibleJobIds.length} filtered job(s) in REAL SUBMIT mode!`
+                        : `Apply-all started for ${eligibleJobIds.length} filtered job(s) in Proof-only mode!`,
+                      'success'
+                    )
+                  }
+                />
+              );
+            })()}
           </div>
 
           {/* Job Grid */}

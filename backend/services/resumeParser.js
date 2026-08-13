@@ -6,13 +6,16 @@ const fs = require('fs');
 const SKILL_KEYWORDS = [
   'JavaScript', 'TypeScript', 'React', 'React.js', 'Node.js', 'Node', 'Python',
   'Java', 'C++', 'C#', 'Go', 'Golang', 'Rust', 'Ruby', 'PHP', 'Swift', 'Kotlin',
-  'HTML', 'CSS', 'Tailwind', 'Sass', 'Bootstrap',
-  'SQL', 'MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'SQLite',
-  'Express', 'Next.js', 'Vite', 'Django', 'Flask', 'Spring',
-  'AWS', 'GCP', 'Azure', 'Docker', 'Kubernetes', 'Terraform',
-  'Git', 'GitHub', 'CI/CD', 'Linux', 'REST', 'RESTful', 'GraphQL',
-  'Playwright', 'Puppeteer', 'Selenium', 'Jest', 'Cypress',
-  'LLM', 'AI', 'Machine Learning', 'Deep Learning', 'PyTorch', 'TensorFlow'
+  'HTML', 'CSS', 'Tailwind', 'TailwindCSS', 'Sass', 'Bootstrap',
+  'SQL', 'MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'SQLite', 'DynamoDB', 'Snowflake', 'BigQuery',
+  'Express', 'Next.js', 'Vite', 'Django', 'Flask', 'Spring', 'FastAPI', 'Nuxt.js',
+  'AWS', 'GCP', 'Azure', 'Docker', 'Kubernetes', 'Terraform', 'Ansible', 'CI/CD',
+  'Git', 'GitHub', 'Linux', 'REST', 'RESTful', 'GraphQL', 'gRPC', 'WebSockets',
+  'Playwright', 'Puppeteer', 'Selenium', 'Jest', 'Cypress', 'PyTest',
+  'LLM', 'AI', 'Machine Learning', 'Deep Learning', 'PyTorch', 'TensorFlow', 'OpenAI',
+  'LangChain', 'LlamaIndex', 'RAG', 'Vector DB', 'Pinecone', 'Milvus', 'Chroma',
+  'Pandas', 'NumPy', 'Scikit-Learn', 'SciPy', 'Keras', 'Hugging Face', 'Transformers',
+  'Kafka', 'Spark', 'Airflow', 'Microservices', 'System Design', 'OOP'
 ];
 
 /**

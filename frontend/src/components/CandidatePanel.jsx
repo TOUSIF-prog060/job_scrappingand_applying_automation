@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react';
-import { uploadResume } from '../api/jobsApi';
+import { uploadResume, uploadCoverLetter } from '../api/jobsApi';
 import CandidateEditModal from './CandidateEditModal';
 
 export default function CandidatePanel({ candidate, onResumeUploaded, onCandidateUpdated }) {
   const fileInputRef = useRef(null);
+  const coverInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadMsg, setUploadMsg] = useState(null); // { text, type: 'ok'|'err' }
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState(null);
+  const [coverMsg, setCoverMsg] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
   if (!candidate) return null;
@@ -21,12 +24,30 @@ export default function CandidatePanel({ candidate, onResumeUploaded, onCandidat
     setUploadMsg(null);
     try {
       const res = await uploadResume(file);
-      setUploadMsg({ text: `✅ "${file.name}" parsed & updated`, type: 'ok' });
+      setUploadMsg({ text: `✅ Resume "${file.name}" parsed & updated`, type: 'ok' });
       onResumeUploaded?.(res?.candidate);
     } catch (err) {
       setUploadMsg({ text: `❌ ${err.message}`, type: 'err' });
     } finally {
       setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleCoverChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingCover(true);
+    setCoverMsg(null);
+    try {
+      const res = await uploadCoverLetter(file);
+      setCoverMsg({ text: `✅ Cover Letter "${file.name}" uploaded`, type: 'ok' });
+      onCandidateUpdated?.(res?.candidate);
+    } catch (err) {
+      setCoverMsg({ text: `❌ ${err.message}`, type: 'err' });
+    } finally {
+      setUploadingCover(false);
       e.target.value = '';
     }
   }
@@ -78,44 +99,75 @@ export default function CandidatePanel({ candidate, onResumeUploaded, onCandidat
             )}
           </div>
 
-          {/* Resume upload */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          {/* Dual Document Upload Section */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {/* Resume Upload */}
             <input
               ref={fileInputRef}
               id="resume-upload-input"
               type="file"
-              accept=".pdf,application/pdf"
+              accept=".pdf,.docx,.doc,.txt"
               style={{ display: 'none' }}
               onChange={handleFileChange}
             />
             <button
+              type="button"
               className={`btn btn-sm ${hasResume && !uploadMsg ? 'btn-ghost' : 'btn-primary'}`}
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
               id="resume-upload-btn"
+              title="Upload PDF or Word (.docx) resume"
             >
               {uploading ? (
                 <><span className="spinner" /> Uploading...</>
               ) : hasResume ? (
-                '📄 Replace Resume'
+                `📄 ${candidate.resumeFileName || 'resume'} (Replace)`
               ) : (
                 '📎 Upload Resume'
               )}
             </button>
 
-            {/* Status line */}
+            {/* Cover Letter Upload */}
+            <input
+              ref={coverInputRef}
+              id="cover-upload-input"
+              type="file"
+              accept=".pdf,.docx,.doc,.txt"
+              style={{ display: 'none' }}
+              onChange={handleCoverChange}
+            />
+            <button
+              type="button"
+              className={`btn btn-sm ${candidate.hasCoverLetter ? 'btn-ghost' : 'btn-primary'}`}
+              onClick={() => coverInputRef.current?.click()}
+              disabled={uploadingCover}
+              id="cover-upload-btn"
+              title="Upload PDF, Word (.docx), or TXT cover letter document"
+            >
+              {uploadingCover ? (
+                <><span className="spinner" /> Uploading...</>
+              ) : candidate.hasCoverLetter ? (
+                `📝 ${candidate.coverLetterFileName || 'cover_letter'} (Replace)`
+              ) : (
+                '✉️ Upload Cover Letter'
+              )}
+            </button>
+          </div>
+
+          {/* Status Messages */}
+          <div style={{ marginTop: '4px', fontSize: '0.72rem' }}>
             {uploadMsg ? (
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  color: uploadMsg.type === 'ok' ? 'var(--accent-green)' : 'var(--accent-red)',
-                }}
-              >
+              <span style={{ color: uploadMsg.type === 'ok' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
                 {uploadMsg.text}
               </span>
+            ) : coverMsg ? (
+              <span style={{ color: coverMsg.type === 'ok' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                {coverMsg.text}
+              </span>
             ) : (
-              <span style={{ fontSize: '0.72rem', color: hasResume ? 'var(--accent-green)' : 'var(--text-muted)' }}>
-                {hasResume ? '✓ resume.pdf ready' : 'No resume uploaded yet'}
+              <span style={{ color: 'var(--text-muted)' }}>
+                {hasResume ? `✓ ${candidate.resumeFileName || 'Resume'} ready` : 'No resume uploaded'}
+                {candidate.hasCoverLetter ? ` · ✓ ${candidate.coverLetterFileName || 'Cover Letter'} ready` : ''}
               </span>
             )}
           </div>

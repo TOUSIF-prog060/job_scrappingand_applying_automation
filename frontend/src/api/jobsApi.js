@@ -22,8 +22,12 @@ export async function fetchJob(id) {
   return handleResponse(res);
 }
 
-export async function triggerScrape() {
-  const res = await fetch(`${BASE}/jobs/scrape`, { method: 'POST' });
+export async function triggerScrape(boards = null) {
+  const res = await fetch(`${BASE}/jobs/scrape`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ boards }),
+  });
   return handleResponse(res);
 }
 
@@ -38,19 +42,19 @@ export async function applyToJob(jobId, allowSubmit = false) {
   return handleResponse(res);
 }
 
-export async function openFilledBrowserApi(jobId) {
-  const res = await fetch(`${BASE}/applications/${jobId}/open-browser`, {
+export async function applyToAll(allowSubmit = false, jobIds = []) {
+  const res = await fetch(`${BASE}/applications/apply-all`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowSubmit, jobIds }),
   });
   return handleResponse(res);
 }
 
-export async function applyToAll(allowSubmit = false) {
-  const res = await fetch(`${BASE}/applications/apply-all`, {
+export async function stopApplyAll() {
+  const res = await fetch(`${BASE}/applications/stop-all`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ allowSubmit }),
   });
   return handleResponse(res);
 }
@@ -89,5 +93,12 @@ export async function uploadResume(file) {
   const form = new FormData();
   form.append('resume', file);
   const res = await fetch(`${BASE}/candidate/resume`, { method: 'POST', body: form });
+  return handleResponse(res);
+}
+
+export async function uploadCoverLetter(file) {
+  const form = new FormData();
+  form.append('coverLetter', file);
+  const res = await fetch(`${BASE}/candidate/cover-letter`, { method: 'POST', body: form });
   return handleResponse(res);
 }

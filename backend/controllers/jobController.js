@@ -1,5 +1,6 @@
 const { getAllJobs, getJobById, getStats } = require('../services/jobService');
 const { runGreenhouseScraper } = require('../../scraper/greenhouseScraper');
+const { runPythonScraper } = require('../services/pythonScraperBridge');
 
 async function listJobs(req, res) {
   try {
@@ -21,19 +22,23 @@ async function getJob(req, res) {
 
 async function scrapeJobs(req, res) {
   try {
-    // Respond immediately, scrape runs quickly (it's just HTTP + DB writes)
-    res.json({ message: 'Scraping started...', status: 'running' });
-    // Run after response is sent
-    setImmediate(async () => {
-      try {
-        const result = await runGreenhouseScraper();
-        console.log('[Scraper] Done:', result);
-      } catch (e) {
-        console.error('[Scraper] Error:', e.message);
-      }
-    });
+    const { boards } = req.body || {};
+    console.log(`[ScraperController] Scrape requested for boards:`, boards || 'default');
+
+    let result;
+    try {
+      result = await runPythonScraper(boards);
+      console.log('[ScraperController] Python scraper completed:', result);
+    } catch (e) {
+      console.warn('[ScraperController] Python scraper failed, triggering JS fallback:', e.message);
+      result = await runGreenhouseScraper(boards);
+      console.log('[ScraperController] JS Fallback completed:', result);
+    }
+
+    res.json(result || { success: true, message: 'Scrape completed', inserted: 0 });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[ScraperController] Scrape error:', err.message);
+    res.status(200).json({ success: false, error: err.message, inserted: 0, totalScraped: 0 });
   }
 }
 

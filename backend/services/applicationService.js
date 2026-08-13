@@ -2,8 +2,6 @@ const path = require('path');
 const fs = require('fs');
 const { getJobById, updateJobStatus, getJobsByStatus } = require('./jobService');
 const { applyToJob } = require('../../automation/applyToJob');
-const { launchBrowser } = require('../../automation/browserManager');
-const { fillVisibleFields } = require('../../automation/formFiller');
 
 // Track apply-all progress in memory
 let applyAllProgress = { running: false, total: 0, completed: 0, failed: 0, startedAt: null };
@@ -14,7 +12,7 @@ let applyAllProgress = { running: false, total: 0, completed: 0, failed: 0, star
 async function runApplyForJob(jobId, options = {}) {
   const job = getJobById(jobId);
 
-  if (job.status === 'SCREENSHOT_CAPTURED') {
+  if (job.status === 'SCREENSHOT_CAPTURED' || job.status === 'READY_FOR_REVIEW') {
     return;
   }
 
@@ -40,29 +38,29 @@ async function runApplyForJob(jobId, options = {}) {
 }
 
 /**
- * Open a live interactive Playwright Chromium window on desktop for a job application,
- * populate all candidate fields (Name, Email, Phone, Resume, Gender, Race, Disability, Veteran, Q&A),
- * bring window to front, and leave the browser window open on screen.
+ * Launch live interactive Playwright Chromium window on user desktop for manual form filling.
  */
-async function openFilledBrowser(jobId) {
+async function openLiveInteractiveBrowser(jobId) {
+  const { launchBrowser } = require('../../automation/browserManager');
+  const { fillVisibleFields } = require('../../automation/formFiller');
   const job = getJobById(jobId);
   const candidatePath = path.resolve(__dirname, '..', '..', 'data', 'candidate.json');
   const candidate = JSON.parse(fs.readFileSync(candidatePath, 'utf8'));
 
-  console.log(`[OpenFilledBrowser] Launching live interactive Chromium window for: "${job.title}"`);
-  console.log(`  URL: ${job.application_url}`);
+  const targetUrl = job.application_url || job.job_url;
+  console.log(`[OpenLiveBrowser] Launching desktop Playwright Chromium window for: "${job.title}"`);
+  console.log(`  Target URL: ${targetUrl}`);
 
   const { page } = await launchBrowser({ headless: false });
-  await page.goto(job.application_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(1000);
 
-  console.log(`[OpenFilledBrowser] Auto-filling candidate fields in live browser window...`);
+  console.log(`[OpenLiveBrowser] Pre-filling candidate profile fields into live browser...`);
   await fillVisibleFields(page, candidate);
   await page.bringToFront().catch(() => {});
 
-  console.log(`[OpenFilledBrowser] Form filled! Browser window remains open on desktop screen.`);
-
-  return { message: 'Filled browser window launched on desktop screen.' };
+  console.log(`[OpenLiveBrowser] Browser window ready on desktop! You can now manually review or complete remaining fields.`);
+  return { success: true, url: targetUrl, jobId };
 }
 
 /**
@@ -73,9 +71,19 @@ async function runApplyAll(options = {}) {
     return { alreadyRunning: true };
   }
 
-  const jobs = getJobsByStatus('NOT_STARTED');
+  const { allowSubmit = false, jobIds = [] } = options;
+  let jobs = [];
+
+  if (Array.isArray(jobIds) && jobIds.length > 0) {
+    const { getAllJobs } = require('./jobService');
+    const all = getAllJobs();
+    jobs = all.filter((j) => jobIds.includes(j.id) && (j.status === 'NOT_STARTED' || j.status === 'FAILED'));
+  } else {
+    jobs = getJobsByStatus('NOT_STARTED');
+  }
+
   if (jobs.length === 0) {
-    return { message: 'No NOT_STARTED jobs to process.' };
+    return { message: 'No eligible jobs to process in current filter.', total: 0 };
   }
 
   applyAllProgress = {
@@ -84,26 +92,52 @@ async function runApplyAll(options = {}) {
     completed: 0,
     failed: 0,
     startedAt: new Date().toISOString(),
+    cancelRequested: false,
   };
 
   (async () => {
     for (const job of jobs) {
-      await runApplyForJob(job.id, options);
+      if (applyAllProgress.cancelRequested) {
+        console.log('[ApplyAll] Stopped before job start by user request.');
+        break;
+      }
+      await runApplyForJob(job.id, { allowSubmit });
+      if (applyAllProgress.cancelRequested) {
+        console.log('[ApplyAll] Stopped after current job by user request.');
+        break;
+      }
       const updated = getJobById(job.id);
-      if (updated.status === 'SCREENSHOT_CAPTURED') {
+      if (updated.status === 'SCREENSHOT_CAPTURED' || updated.status === 'READY_FOR_REVIEW') {
         applyAllProgress.completed++;
       } else if (updated.status === 'FAILED') {
         applyAllProgress.failed++;
       }
     }
     applyAllProgress.running = false;
+    applyAllProgress.cancelRequested = false;
   })();
 
   return { started: true, total: jobs.length };
+}
+
+function stopApplyAll() {
+  if (applyAllProgress.running) {
+    applyAllProgress.cancelRequested = true;
+    applyAllProgress.running = false;
+    console.log('[ApplicationService] Stop apply-all requested by user.');
+    return { success: true, message: 'Apply-all cancellation requested.' };
+  }
+  return { success: true, message: 'Apply-all was not running.' };
 }
 
 function getApplyAllProgress() {
   return { ...applyAllProgress };
 }
 
-module.exports = { runApplyForJob, runApplyAll, getApplyAllProgress, openFilledBrowser };
+module.exports = {
+  runApplyForJob,
+  openLiveInteractiveBrowser,
+  runApplyAll,
+  stopApplyAll,
+  getApplyAllProgress,
+};
