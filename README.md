@@ -10,7 +10,7 @@
 [![SQLite](https://img.shields.io/badge/Database-SQLite%20(sql.js)-skyblue.svg)](https://sql.js.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
-*Scrapes public Greenhouse job boards, parses PDF resumes automatically, auto-fills application forms with 100% field coverage, enforces strict non-submission safety guards, captures proof screenshots, and features a live dark-glassmorphism dashboard.*
+*Scrapes public Greenhouse job boards, parses PDF resumes automatically, auto-fills application forms across text inputs, radio groups, React dropdowns and embedded iframes, enforces strict non-submission safety guards, captures proof screenshots, and features a live dark-glassmorphism dashboard.*
 
 ---
 
@@ -24,12 +24,16 @@
   - Fetches 10–15 jobs from public Greenhouse company boards (`boards-api.greenhouse.io`), normalizes job metadata, decodes HTML entities, and prevents duplicate records upon re-scraping.
 - 📄 **Structured Candidate Profile & Resume Uploader**:
   - Parses uploaded PDF resumes (`pdf-parse`) into structured profile fields (`data/candidate.json`), validating resume existence, file type, and attachment.
+  - **Manual answers for details a resume never contains** — Expected Salary, Available Start Date, Years of Experience, Referral Source, Education and Website are editable from the dashboard (*Edit Profile & EEO*) and auto-filled into matching form fields.
 - ⚖️ **Form Filler & Validation Engine**:
-  - Locates inputs via `aria-label`, `<label>`, `name`, `id`, `placeholder`, and matches candidate profile data.
-  - Automatically matches EEO/demographic dropdown options (Gender, Race/Ethnicity, Disability Status, Veteran Status, Work Authorization).
-  - Performs strict validation (`validateFilledForm`): if mandatory required fields are missing or unpopulated, sets status to `FAILED` with explicit `failure_reason` instead of false success messages.
+  - Locates inputs via `aria-label`, `aria-labelledby`, `<label>`, `name`, `id`, and `placeholder`, then matches candidate profile data.
+  - Handles every control type a Greenhouse application uses: text inputs, textareas, native `<select>`, **radio groups** (matched from `<fieldset><legend>` question text), and **React `role="combobox"` dropdowns** that ignore programmatic `fill()`.
+  - **Resolves embedded forms.** Companies such as Databricks and Stripe host the Greenhouse form in an iframe on their own careers site; the filler locates the frame holding real application fields and waits for it to load.
+  - Follows an **"Apply now" entry button** on landing pages that have no form yet — only while nothing has been filled, so it can never fire on a completed form where *Apply* means submit.
+  - Matches EEO/demographic answers (Gender, Race/Ethnicity, Disability Status, Veteran Status, Work Authorization, Sponsorship), including synonym mapping so a stored `Male` matches an option labelled `Man`.
+  - Performs strict validation (`validateFilledForm`): if mandatory required fields are missing or **no fields were filled at all**, sets status to `FAILED` with an explicit `failure_reason` instead of a false success.
 - 🤖 **Security Challenge & CAPTCHA Handler**:
-  - Automatically detects CAPTCHA / bot protection frames (`recaptcha`, `hcaptcha`, Cloudflare) and transitions job status to `MANUAL_INTERVENTION_REQUIRED` / `FAILED`.
+  - Automatically detects CAPTCHA / bot protection frames (`recaptcha`, `hcaptcha`, Cloudflare), sets job status to `MANUAL_INTERVENTION_REQUIRED`, and raises a **dashboard popup** naming the blocked role with a direct link to finish it by hand.
 - 📊 **Batch Apply-All & State Queue**:
   - Processes jobs sequentially, ensuring that an individual job failure or CAPTCHA challenge does NOT interrupt remaining queued jobs.
 - 🧪 **Automated Testing Suite**:
@@ -49,8 +53,11 @@ graph TD
     C -->|Fetch Board Listings| E[Python / Greenhouse Scraper API]
     C -->|Parse Resume PDF| F[PDF Resume Parser]
     C -->|Trigger Automation| G[Playwright Chromium Engine]
-    G -->|Navigate & Fill Form| H[Greenhouse Application Board]
-    G -->|Capture Proof PNG| I[Screenshots Storage]
+    G -->|Resolve Form Frame| H[Greenhouse Form: direct page or embedded iframe]
+    H -->|Text, Radio, Combobox, File Upload| K[Filled Application, stopped before submit]
+    K -->|Capture Proof PNG| I[Screenshots Storage]
+    G -->|CAPTCHA Detected| J[MANUAL_INTERVENTION_REQUIRED]
+    J -->|Popup Notification| A
 ```
 
 ---
@@ -150,10 +157,38 @@ Open **`http://localhost:3001`** in your browser.
 | `POST` | `/api/jobs/scrape` | Trigger Greenhouse multi-board scraper |
 | `POST` | `/api/applications/:id/apply` | Apply to single job (`{ allowSubmit: false }`) |
 | `POST` | `/api/applications/apply-all` | Batch apply to all pending jobs |
+| `POST` | `/api/applications/stop-all` | Cancel a running batch apply-all |
 | `GET` | `/api/applications/progress` | Fetch batch apply-all progress state |
+| `GET` | `/api/applications/:id/status` | Poll a single job's status |
 | `GET` | `/api/applications/:id/screenshot` | View proof PNG screenshot |
 | `GET` | `/api/candidate` | Retrieve candidate profile |
+| `PUT` | `/api/candidate` | Update profile fields, EEO answers & manual details |
 | `POST` | `/api/candidate/resume` | Upload PDF resume & parse structured data |
+| `POST` | `/api/candidate/cover-letter` | Upload a cover letter document |
+
+---
+
+## 🚦 Job Status Reference
+
+| Status | Meaning |
+|---|---|
+| `NOT_STARTED` | Scraped and queued, no attempt yet |
+| `PROCESSING` | Browser open, navigating to the application |
+| `FORM_FILLED` | Fields populated, still working through the flow |
+| `READY_FOR_SUBMISSION` | Reached the review/submit screen and stopped |
+| `SCREENSHOT_CAPTURED` | Completed — proof PNG saved |
+| `MANUAL_INTERVENTION_REQUIRED` | CAPTCHA / bot protection hit; raises a dashboard popup and needs a human |
+| `FAILED` | Automation could not fill the form; see `failure_reason` |
+
+`failure_reason` is cleared automatically when a retry succeeds, so a completed job never displays a stale error.
+
+---
+
+## ⚠️ Field Coverage & Limitations
+
+The filler populates every field it can map to your profile. Questions with **no profile equivalent** are deliberately left blank rather than guessed — for example state-residency eligibility, commuting distance, sponsorship-country checklists, consent/acknowledgement checkboxes, and demographic questions the profile does not track (such as sexual orientation).
+
+Because the automation always stops before submission, these remain for you to complete during review. Anything skipped is reported in the `skipped` list logged by `fillVisibleFields`.
 
 ---
 
@@ -164,7 +199,8 @@ Open **`http://localhost:3001`** in your browser.
 - [x] **Individual & Batch Apply**: Supports single-job apply and Apply-to-All queue.
 - [x] **Resume Upload**: Automatically attaches dummy PDF resume to form uploads.
 - [x] **Safety Non-Submission Guard**: Stops before final submit and captures PNG proof.
-- [x] **CAPTCHA Safety**: Halts automation and flags `MANUAL_INTERVENTION_REQUIRED` if CAPTCHA detected.
-- [x] **Form Validation**: Validates mandatory fields and returns explicit failure reasons when unpopulated.
+- [x] **CAPTCHA Safety**: Halts automation, flags `MANUAL_INTERVENTION_REQUIRED`, and raises a dashboard popup when a CAPTCHA is detected.
+- [x] **Form Validation**: Validates mandatory fields and returns explicit failure reasons when unpopulated — a run that fills nothing reports `FAILED` rather than a misleading success.
+- [x] **Embedded Form Support**: Fills Greenhouse forms hosted inside an iframe on a company's own careers site.
 - [x] **Automated Tests**: Unit & integration test suite included (`npm test`).
 - [x] **Docker Support**: Dockerfile & docker-compose.yml included.
