@@ -7,6 +7,7 @@ const VALID_STATUSES = [
   'FORM_FILLED',
   'READY_FOR_SUBMISSION',
   'SCREENSHOT_CAPTURED',
+  'MANUAL_INTERVENTION_REQUIRED',
   'FAILED',
 ];
 
@@ -81,14 +82,27 @@ function upsertJob(jobData) {
   return { inserted: true, job };
 }
 
+const FAILURE_STATUSES = ['FAILED', 'MANUAL_INTERVENTION_REQUIRED'];
+
 function updateJobStatus(id, status, extras = {}) {
   if (!VALID_STATUSES.includes(status)) throw new Error(`Invalid status: ${status}`);
   const { screenshot_path = null, failure_reason = null } = extras;
-  run(
-    `UPDATE jobs SET status = ?, screenshot_path = COALESCE(?, screenshot_path),
-     failure_reason = COALESCE(?, failure_reason), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-    [status, screenshot_path, failure_reason, id]
-  );
+
+  // Clear any reason left over from an earlier failed attempt, otherwise a retry that
+  // succeeds still shows the old error in the dashboard.
+  if (!FAILURE_STATUSES.includes(status)) {
+    run(
+      `UPDATE jobs SET status = ?, screenshot_path = COALESCE(?, screenshot_path),
+       failure_reason = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, screenshot_path, id]
+    );
+  } else {
+    run(
+      `UPDATE jobs SET status = ?, screenshot_path = COALESCE(?, screenshot_path),
+       failure_reason = COALESCE(?, failure_reason), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, screenshot_path, failure_reason, id]
+    );
+  }
   return getJobById(id);
 }
 
@@ -116,13 +130,14 @@ function recalculateAllMatchScores(candidateProfile) {
 
 function getStats() {
   const rows = queryAll('SELECT status, COUNT(*) as count FROM jobs GROUP BY status');
-  const stats = { total: 0, not_started: 0, processing: 0, completed: 0, failed: 0 };
+  const stats = { total: 0, not_started: 0, processing: 0, completed: 0, failed: 0, manual_intervention: 0 };
   rows.forEach(({ status, count }) => {
     const c = Number(count);
     stats.total += c;
     if (status === 'NOT_STARTED') stats.not_started += c;
     else if (['PROCESSING', 'FORM_FILLED', 'READY_FOR_SUBMISSION'].includes(status)) stats.processing += c;
     else if (status === 'SCREENSHOT_CAPTURED') stats.completed += c;
+    else if (status === 'MANUAL_INTERVENTION_REQUIRED') stats.manual_intervention += c;
     else if (status === 'FAILED') stats.failed += c;
   });
   return stats;

@@ -56,5 +56,7 @@
   "startDate": "Immediately",
   "referral": "",
   "additionalInfo": "N/A - No additional requirements.",
-  "resumeFileName": "Final Tousif_Raza_AIML_Resume.pdf"
+  "resumeFileName": "Final Tousif_Raza_AIML_Resume.pdf",
+  "coverLetterPath": "./data/cover_letter.pdf",
+  "coverLetterFileName": "Final Tousif_Raza_AIML_Resume.pdf"
 }

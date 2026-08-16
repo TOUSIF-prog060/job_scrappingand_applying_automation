@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchJobs, fetchCandidate, triggerScrape, fetchApplyAllProgress } from '../api/jobsApi';
 import StatsBar from './StatsBar';
 import SearchBar from './SearchBar';
@@ -20,6 +20,54 @@ function Toast({ toasts }) {
   );
 }
 
+function CaptchaAlertModal({ jobs, onDismiss }) {
+  const job = jobs[0];
+  if (!job) return null;
+  const remaining = jobs.length - 1;
+
+  return (
+    <div className="modal-overlay" onClick={onDismiss}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">🔐 CAPTCHA Detected — Manual Action Needed</span>
+          <button className="modal-close" onClick={onDismiss}>✕</button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <p style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
+            The automation stopped on <strong>{job.title}</strong> at <strong>{job.company}</strong> because
+            the page presented a CAPTCHA or bot-protection challenge. Automated form filling cannot continue
+            for this application.
+          </p>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', padding: '10px 12px', borderRadius: '8px' }}>
+            {job.failure_reason || 'CAPTCHA or bot protection detected'}
+          </div>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            Open the posting yourself to solve the challenge and finish the application manually.
+          </p>
+          {remaining > 0 && (
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              {remaining} more blocked application{remaining > 1 ? 's' : ''} queued.
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <a
+              className="btn btn-primary btn-sm"
+              href={job.application_url || job.job_url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              🔗 Open Application
+            </a>
+            <button className="btn btn-ghost btn-sm" onClick={onDismiss}>
+              {remaining > 0 ? 'Next' : 'Dismiss'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
   const [stats, setStats] = useState({});
@@ -33,6 +81,9 @@ export default function Dashboard() {
   const [progress, setProgress] = useState({ running: false });
   const [allowSubmit, setAllowSubmit] = useState(false);
   const [toasts, setToasts] = useState([]);
+  const [captchaAlerts, setCaptchaAlerts] = useState([]);
+  const notifiedCaptchaIds = useRef(new Set());
+  const firstJobsLoad = useRef(true);
 
   function addToast(message, type = 'success') {
     const id = Date.now();
@@ -44,8 +95,22 @@ export default function Dashboard() {
   const loadJobs = useCallback(async () => {
     try {
       const data = await fetchJobs();
-      setJobs(data.jobs || []);
+      const nextJobs = data.jobs || [];
+      setJobs(nextJobs);
       setStats(data.stats || {});
+
+      const blocked = nextJobs.filter((j) => j.status === 'MANUAL_INTERVENTION_REQUIRED');
+      if (firstJobsLoad.current) {
+        // Don't replay alerts for jobs already blocked before this session started
+        blocked.forEach((j) => notifiedCaptchaIds.current.add(j.id));
+        firstJobsLoad.current = false;
+      } else {
+        const fresh = blocked.filter((j) => !notifiedCaptchaIds.current.has(j.id));
+        if (fresh.length > 0) {
+          fresh.forEach((j) => notifiedCaptchaIds.current.add(j.id));
+          setCaptchaAlerts((prev) => [...prev, ...fresh]);
+        }
+      }
     } catch (e) {
       console.error('Failed to load jobs:', e);
     } finally {
@@ -321,6 +386,14 @@ export default function Dashboard() {
         <ScreenshotModal
           job={screenshotJob}
           onClose={() => setScreenshotJob(null)}
+        />
+      )}
+
+      {/* ── CAPTCHA Alert Popup ──────────────────────────────────────────────── */}
+      {captchaAlerts.length > 0 && (
+        <CaptchaAlertModal
+          jobs={captchaAlerts}
+          onDismiss={() => setCaptchaAlerts((prev) => prev.slice(1))}
         />
       )}
 

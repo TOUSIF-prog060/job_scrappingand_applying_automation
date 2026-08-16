@@ -4,7 +4,7 @@ const { getJobById, updateJobStatus, getJobsByStatus } = require('./jobService')
 const { applyToJob } = require('../../automation/applyToJob');
 
 // Track apply-all progress in memory
-let applyAllProgress = { running: false, total: 0, completed: 0, failed: 0, startedAt: null };
+let applyAllProgress = { running: false, total: 0, completed: 0, failed: 0, manualIntervention: 0, startedAt: null };
 
 /**
  * Apply to a single job — async (fire and forget from route handler).
@@ -23,6 +23,11 @@ async function runApplyForJob(jobId, options = {}) {
     if (result.success) {
       updateJobStatus(jobId, 'SCREENSHOT_CAPTURED', {
         screenshot_path: result.screenshotPath,
+      });
+    } else if (result.captcha) {
+      updateJobStatus(jobId, 'MANUAL_INTERVENTION_REQUIRED', {
+        screenshot_path: result.screenshotPath,
+        failure_reason: result.reason || 'CAPTCHA detected — manual completion required',
       });
     } else {
       updateJobStatus(jobId, 'FAILED', {
@@ -91,6 +96,7 @@ async function runApplyAll(options = {}) {
     total: jobs.length,
     completed: 0,
     failed: 0,
+    manualIntervention: 0,
     startedAt: new Date().toISOString(),
     cancelRequested: false,
   };
@@ -109,6 +115,8 @@ async function runApplyAll(options = {}) {
       const updated = getJobById(job.id);
       if (updated.status === 'SCREENSHOT_CAPTURED' || updated.status === 'READY_FOR_REVIEW') {
         applyAllProgress.completed++;
+      } else if (updated.status === 'MANUAL_INTERVENTION_REQUIRED') {
+        applyAllProgress.manualIntervention++;
       } else if (updated.status === 'FAILED') {
         applyAllProgress.failed++;
       }

@@ -9,6 +9,8 @@ const {
   validateFilledForm,
   detectCaptcha,
   clickContinueIfPresent,
+  clickApplyEntryIfPresent,
+  waitForFormFields,
   clickSubmit,
   isOnReviewPage,
   isSubmittedConfirmationPage,
@@ -53,6 +55,7 @@ async function applyToJob(job, onStatusUpdate = () => { }, options = {}) {
     });
 
     await page.waitForTimeout(2000);
+    await waitForFormFields(page, 8_000);
 
     // Step 3: Check for CAPTCHA immediately
     if (await detectCaptcha(page)) {
@@ -60,6 +63,7 @@ async function applyToJob(job, onStatusUpdate = () => { }, options = {}) {
       if (!keepOpen) await closeBrowser(browser);
       return {
         success: false,
+        captcha: true,
         reason: 'CAPTCHA or bot protection detected',
         screenshotPath,
       };
@@ -78,6 +82,14 @@ async function applyToJob(job, onStatusUpdate = () => { }, options = {}) {
       onStatusUpdate('FORM_FILLED');
 
       await page.waitForTimeout(1000);
+
+      // Some boards (e.g. Databricks) redirect to a landing page whose form sits behind
+      // an "Apply" button. Only follow it while nothing has been filled, so this can never
+      // fire on a completed form where "Apply" would mean submit.
+      if (lastFillResult.filled === 0 && (await clickApplyEntryIfPresent(page))) {
+        await waitForFormFields(page, 15_000);
+        continue;
+      }
 
       // Check if review/ready page reached
       if (await isOnReviewPage(page)) {
@@ -101,15 +113,29 @@ async function applyToJob(job, onStatusUpdate = () => { }, options = {}) {
         if (!keepOpen) await closeBrowser(browser);
         return {
           success: false,
+          captcha: true,
           reason: 'CAPTCHA detected after navigation',
           screenshotPath,
         };
       }
     }
 
+    // Nothing filled means we never reached a real application form — reporting success
+    // here would produce a proof screenshot of an empty page.
+    if (!lastFillResult || lastFillResult.filled === 0) {
+      console.warn(`  [Validation Failed] No form fields were filled on this page.`);
+      const screenshotPath = await captureScreenshot(page, `${job.id}_failed`).catch(() => null);
+      if (!keepOpen) await closeBrowser(browser);
+      return {
+        success: false,
+        reason: 'No application form fields were found or filled on this page',
+        screenshotPath,
+      };
+    }
+
     // Validate form completion before declaring success
     const validation = await validateFilledForm(page);
-    if (!validation.valid && (!lastFillResult || lastFillResult.filled === 0)) {
+    if (!validation.valid) {
       console.warn(`  [Validation Failed] Required fields missing: ${validation.missingFields.join(', ')}`);
       const screenshotPath = await captureScreenshot(page, `${job.id}_failed`).catch(() => null);
       if (!keepOpen) await closeBrowser(browser);

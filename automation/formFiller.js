@@ -23,6 +23,12 @@ const DIRECT_MAPPINGS = [
   { selectors: ['input[aria-label*="LinkedIn" i]', 'input[id*="linkedin" i]', 'input[name*="linkedin" i]'], key: 'linkedin' },
   { selectors: ['input[aria-label*="GitHub" i]', 'input[id*="github" i]', 'input[name*="github" i]'], key: 'github' },
   { selectors: ['input[aria-label*="Website" i]', 'input[aria-label*="Portfolio" i]', 'input[id*="website" i]', 'input[name*="website" i]'], key: 'website' },
+  { selectors: ['input[aria-label*="Salary" i]', 'input[aria-label*="Compensation" i]', 'input[id*="salary" i]', 'input[name*="salary" i]', 'input[name*="compensation" i]'], key: 'salary' },
+  { selectors: ['input[aria-label*="Start Date" i]', 'input[aria-label*="Available" i]', 'input[id*="start_date" i]', 'input[name*="start_date" i]', 'input[name*="availability" i]'], key: 'startDate' },
+  { selectors: ['input[aria-label*="How did you hear" i]', 'input[aria-label*="Referral" i]', 'input[id*="referral" i]', 'input[name*="referral" i]', 'input[name*="how_did_you_hear" i]'], key: 'referral' },
+  { selectors: ['input[aria-label*="Current Title" i]', 'input[aria-label*="Job Title" i]', 'input[id*="current_title" i]', 'input[name*="current_title" i]', 'input[name*="job_title" i]'], key: 'currentTitle' },
+  { selectors: ['input[aria-label*="Education" i]', 'input[aria-label*="Degree" i]', 'input[id*="education" i]', 'input[name*="education" i]', 'input[name*="degree" i]'], key: 'education' },
+  { selectors: ['input[aria-label*="Experience" i]', 'input[aria-label*="Years of" i]', 'input[id*="experience" i]', 'input[name*="experience" i]'], key: 'experience' },
 ];
 
 /**
@@ -38,19 +44,41 @@ const EEO_MAPPINGS = [
 ];
 
 /**
+ * Equivalent phrasings for the same answer, keyed by the lowercased candidate value.
+ */
+const OPTION_SYNONYMS = {
+  male: ['man'],
+  female: ['woman'],
+  yes: ['true'],
+  no: ['false'],
+  'i decline to self-identify': ['decline to self identify', 'prefer not to say', "i don't wish to answer", 'do not wish to answer', 'prefer not to disclose'],
+  // Forms often reduce the long EEO statements to a plain yes/no
+  'i do not have a disability': ['no'],
+  'yes, i have a disability': ['yes'],
+  'i am not a protected veteran': ['no'],
+  'i identify as one or more of the classifications of protected veteran': ['yes'],
+};
+
+/**
  * Safely fill an input element with Playwright, handling React/Controlled input events.
  */
 async function safelyFillInput(el, value) {
+  // Radios/checkboxes are toggled, never typed into — filling one would clobber its value attribute
+  const inputType = (await el.getAttribute('type').catch(() => '')) || '';
+  if (inputType === 'radio' || inputType === 'checkbox') return false;
+
   try {
     await el.scrollIntoViewIfNeeded().catch(() => {});
     await el.focus().catch(() => {});
     await el.fill(value);
     await el.dispatchEvent('input').catch(() => {});
     await el.dispatchEvent('change').catch(() => {});
-    await el.blur().catch(() => {});
+    await el.evaluate((e) => e.blur()).catch(() => {});
     return true;
   } catch (_) {
     try {
+      // Clear first — type() appends, which would corrupt a partially filled field
+      await el.evaluate((e) => { e.value = ''; }).catch(() => {});
       await el.type(value, { delay: 10 });
       return true;
     } catch (_) {
@@ -59,10 +87,89 @@ async function safelyFillInput(el, value) {
   }
 }
 
+const GENERIC_FIELD_SELECTOR = 'input:not([type="hidden"]), textarea, select';
+
+/**
+ * Fields that only appear on an actual job application, used to tell the real form
+ * apart from a careers page's search box or newsletter signup.
+ */
+const APPLICATION_FIELD_SELECTOR = [
+  'input[id*="first_name"]',
+  'input[name*="first_name"]',
+  'input[id*="last_name"]',
+  'input[name*="last_name"]',
+  'input[aria-label*="First Name" i]',
+  'input[aria-label*="Last Name" i]',
+  'input[id="email"]',
+  'input[id*="job_application"]',
+  'input[type="file"]',
+].join(', ');
+
+/**
+ * Companies commonly embed the Greenhouse form in an iframe on their own careers site,
+ * so the main frame holds no fields. Pick whichever frame actually contains the form.
+ */
+async function resolveFormContext(page) {
+  if (typeof page.frames !== 'function') return page; // already a Frame
+
+  const mainFrame = typeof page.mainFrame === 'function' ? page.mainFrame() : page;
+
+  // A frame carrying real application fields always wins over one that merely has
+  // inputs — host career pages have their own search and newsletter boxes.
+  let bestApplication = null;
+  let bestApplicationCount = 0;
+  let bestAny = mainFrame;
+  let bestAnyCount = await countMatches(mainFrame, GENERIC_FIELD_SELECTOR);
+
+  for (const frame of page.frames()) {
+    const appCount = await countMatches(frame, APPLICATION_FIELD_SELECTOR);
+    if (appCount > bestApplicationCount) {
+      bestApplicationCount = appCount;
+      bestApplication = frame;
+    }
+    if (frame === mainFrame) continue;
+    const anyCount = await countMatches(frame, GENERIC_FIELD_SELECTOR);
+    if (anyCount > bestAnyCount) {
+      bestAnyCount = anyCount;
+      bestAny = frame;
+    }
+  }
+
+  return bestApplication || bestAny;
+}
+
+function countMatches(frame, selector) {
+  return frame.$$(selector).then((e) => e.length).catch(() => 0);
+}
+
+/**
+ * Poll until some frame actually exposes form fields. Embedded Greenhouse iframes
+ * load well after the host page fires domcontentloaded.
+ */
+async function waitForFormFields(page, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ctx = await resolveFormContext(page);
+    if ((await countMatches(ctx, APPLICATION_FIELD_SELECTOR)) > 0) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+/**
+ * Playwright exposes `keyboard` on Page but not on Frame.
+ */
+function keyboardOf(ctx) {
+  if (ctx.keyboard) return ctx.keyboard;
+  if (typeof ctx.page === 'function' && ctx.page()) return ctx.page().keyboard;
+  return null;
+}
+
 /**
  * Detect and fill all visible form fields on the current page.
  */
-async function fillVisibleFields(page, candidate) {
+async function fillVisibleFields(pageOrFrame, candidate) {
+  const page = await resolveFormContext(pageOrFrame);
   const filled = [];
   const skipped = [];
 
@@ -71,7 +178,9 @@ async function fillVisibleFields(page, candidate) {
     const value = getCandidateValue(candidate, item.key);
     if (!value) continue;
 
+    let filled_this_item = false;
     for (const sel of item.selectors) {
+      if (filled_this_item) break;
       try {
         const el = await page.$(sel);
         if (el && (await el.isVisible().catch(() => false))) {
@@ -80,11 +189,11 @@ async function fillVisibleFields(page, candidate) {
             const ok = await safelyFillInput(el, value);
             if (ok) {
               filled.push(item.key);
-              break;
+              filled_this_item = true;
             }
           } else {
             filled.push(item.key);
-            break;
+            filled_this_item = true;
           }
         }
       } catch (_) {}
@@ -96,7 +205,9 @@ async function fillVisibleFields(page, candidate) {
     const value = getCandidateValue(candidate, item.key);
     if (!value) continue;
 
+    let filled_this_item = false;
     for (const sel of item.selectors) {
+      if (filled_this_item) break;
       try {
         const el = await page.$(sel);
         if (el && (await el.isVisible().catch(() => false))) {
@@ -113,13 +224,13 @@ async function fillVisibleFields(page, candidate) {
             if (best) {
               await el.selectOption({ value: best.value });
               filled.push(`EEO: ${item.key}`);
-              break;
+              filled_this_item = true;
             }
           } else {
             const ok = await safelyFillInput(el, value);
             if (ok) {
               filled.push(`EEO: ${item.key}`);
-              break;
+              filled_this_item = true;
             }
           }
         }
@@ -140,11 +251,16 @@ async function fillVisibleFields(page, candidate) {
       if (currentValue && currentValue.trim().length > 0) continue;
 
       const label = await getLabelForElement(page, input);
-      if (!label) continue;
+      if (!label) {
+        const name = await input.getAttribute('name').catch(() => '');
+        const id = await input.getAttribute('id').catch(() => '');
+        if (!name && !id) continue;
+      }
 
-      const match = findMatchingKey(label);
+      const effectiveLabel = label || (await input.getAttribute('name').catch(() => '')) || (await input.getAttribute('id').catch(() => '')) || 'Unknown Field';
+      const match = findMatchingKey(effectiveLabel);
       if (!match) {
-        skipped.push(label);
+        if (label) skipped.push(effectiveLabel);
         continue;
       }
 
@@ -152,7 +268,7 @@ async function fillVisibleFields(page, candidate) {
       if (!value) continue;
 
       const ok = await safelyFillInput(input, value);
-      if (ok) filled.push(label);
+      if (ok) filled.push(effectiveLabel);
     } catch (e) {
       skipped.push(`Input fill error: ${e.message}`);
     }
@@ -169,10 +285,16 @@ async function fillVisibleFields(page, candidate) {
       if (currentValue && currentValue.trim().length > 0) continue;
 
       const label = await getLabelForElement(page, ta);
+      const effectiveLabel = label || (await ta.getAttribute('name').catch(() => '')) || (await ta.getAttribute('id').catch(() => '')) || 'Custom Text Question';
       let value = '';
 
       if (label) {
         const match = findMatchingKey(label);
+        if (match) value = getCandidateValue(candidate, match.key);
+      }
+
+      if (!value && effectiveLabel !== 'Custom Text Question') {
+        const match = findMatchingKey(effectiveLabel);
         if (match) value = getCandidateValue(candidate, match.key);
       }
 
@@ -181,7 +303,7 @@ async function fillVisibleFields(page, candidate) {
       }
 
       const ok = await safelyFillInput(ta, value);
-      if (ok) filled.push(label || 'Custom Text Question');
+      if (ok) filled.push(effectiveLabel);
     } catch (e) {
       skipped.push(`Textarea fill error: ${e.message}`);
     }
@@ -196,9 +318,9 @@ async function fillVisibleFields(page, candidate) {
 
       const currentVal = await sel.evaluate((s) => s.value).catch(() => '');
       const label = await getLabelForElement(page, sel);
-      if (!label) continue;
+      const effectiveLabel = label || (await sel.getAttribute('name').catch(() => '')) || (await sel.getAttribute('id').catch(() => '')) || 'Unknown Select';
 
-      const match = findMatchingKey(label);
+      const match = findMatchingKey(effectiveLabel);
       let value = match ? getCandidateValue(candidate, match.key) : '';
 
       const options = await sel.$$eval('option', (opts) =>
@@ -213,7 +335,7 @@ async function fillVisibleFields(page, candidate) {
         );
         if (best) {
           await sel.selectOption({ value: best.value });
-          filled.push(label);
+          filled.push(effectiveLabel);
           continue;
         }
       }
@@ -222,7 +344,7 @@ async function fillVisibleFields(page, candidate) {
         const validOpt = options.find((o) => o.value !== '' && o.value !== '-1' && !o.text.toLowerCase().includes('select'));
         if (validOpt) {
           await sel.selectOption({ value: validOpt.value });
-          filled.push(`${label} (auto-selected option)`);
+          filled.push(`${effectiveLabel} (auto-selected option)`);
         }
       }
     } catch (e) {
@@ -230,7 +352,77 @@ async function fillVisibleFields(page, candidate) {
     }
   }
 
-  // 6. File inputs — resume & cover letter uploads
+  // 5b. Custom React comboboxes — Greenhouse renders its dropdowns as react-select,
+  //     which ignores fill() and must be opened and clicked like a real user.
+  const comboboxes = await page.$$('input[role="combobox"]');
+  for (const cb of comboboxes) {
+    try {
+      if (!(await cb.isVisible().catch(() => false))) continue;
+
+      const label = await getLabelForElement(page, cb);
+      if (!label) continue;
+
+      const match = findMatchingKey(label);
+      if (!match) {
+        skipped.push(`Dropdown: ${label}`);
+        continue;
+      }
+
+      const value = getCandidateValue(candidate, match.key);
+      if (!value) continue;
+
+      const picked = await selectComboboxOption(page, cb, value);
+      if (picked) filled.push(`${label} = ${picked}`);
+      else skipped.push(`Dropdown (no matching option): ${label}`);
+    } catch (e) {
+      skipped.push(`Combobox error: ${e.message}`);
+    }
+  }
+
+  // 6. Radio button groups (EEO / yes-no questions rendered as radios)
+  const radios = await page.$$('input[type="radio"]');
+  const radioGroups = new Map();
+  for (const radio of radios) {
+    const name = (await radio.getAttribute('name').catch(() => '')) || '';
+    if (!name) continue;
+    if (!radioGroups.has(name)) radioGroups.set(name, []);
+    radioGroups.get(name).push(radio);
+  }
+
+  for (const [groupName, groupRadios] of radioGroups) {
+    try {
+      let alreadyChecked = false;
+      for (const r of groupRadios) {
+        if (await r.isChecked().catch(() => false)) { alreadyChecked = true; break; }
+      }
+      if (alreadyChecked) continue;
+
+      const questionText = await getRadioGroupQuestion(page, groupRadios[0], groupName);
+      const match = findMatchingKey(questionText);
+      if (!match) {
+        skipped.push(`Radio group: ${questionText}`);
+        continue;
+      }
+
+      const value = getCandidateValue(candidate, match.key);
+      if (!value) continue;
+
+      for (const r of groupRadios) {
+        const optionLabel = await getRadioOptionLabel(page, r);
+        if (!optionLabel) continue;
+        if (optionLabel.toLowerCase().includes(value.toLowerCase()) || value.toLowerCase().includes(optionLabel.toLowerCase())) {
+          await r.scrollIntoViewIfNeeded().catch(() => {});
+          await r.check().catch(async () => { await r.click().catch(() => {}); });
+          filled.push(`${questionText} = ${optionLabel}`);
+          break;
+        }
+      }
+    } catch (e) {
+      skipped.push(`Radio group error: ${e.message}`);
+    }
+  }
+
+  // 7. File inputs — resume & cover letter uploads
   const fileInputs = await page.$$('input[type="file"], #resume, #cover_letter');
   const dataDir = path.resolve(__dirname, '..', 'data');
 
@@ -290,6 +482,18 @@ async function getLabelForElement(page, element) {
       }
     }
 
+    const ariaLabelledBy = await element.getAttribute('aria-labelledby');
+    if (ariaLabelledBy) {
+      const ids = ariaLabelledBy.split(' ');
+      for (const labelId of ids) {
+        const labelEl = await page.$(`#${labelId}`);
+        if (labelEl) {
+          const text = await labelEl.innerText();
+          if (text && text.trim()) return text.trim();
+        }
+      }
+    }
+
     const placeholder = await element.getAttribute('placeholder');
     if (placeholder && placeholder.trim()) return placeholder.trim();
 
@@ -307,6 +511,151 @@ async function getLabelForElement(page, element) {
   } catch (_) {
     return null;
   }
+}
+
+/**
+ * Escape an id for use in a CSS selector (ids here contain digits and dashes).
+ */
+function CSS_escape(id) {
+  return id.replace(/([^a-zA-Z0-9_-])/g, '\\$1');
+}
+
+async function pressEscape(ctx) {
+  const kb = keyboardOf(ctx);
+  if (kb) await kb.press('Escape').catch(() => {});
+}
+
+/**
+ * Collect the option elements belonging to one open combobox.
+ * Never queries options globally — unrelated always-mounted menus (such as the phone
+ * widget's country list) would otherwise be treated as this field's choices.
+ */
+async function findOptionsForCombobox(ctx, combobox) {
+  const listboxId = await combobox.getAttribute('aria-controls').catch(() => null);
+  if (listboxId) {
+    const scoped = await ctx.$$(`#${CSS_escape(listboxId)} [role="option"]`).catch(() => []);
+    if (scoped.length) return scoped;
+  }
+
+  // Some react-select builds omit aria-controls; the menu still renders inside a
+  // shared ancestor with the input, so walk up to the nearest one that holds options.
+  const handle = await combobox
+    .evaluateHandle((el) => {
+      let node = el;
+      for (let i = 0; i < 6 && node.parentElement; i++) {
+        node = node.parentElement;
+        if (node.querySelector('[role="option"]')) return node;
+      }
+      return null;
+    })
+    .catch(() => null);
+
+  const container = handle && handle.asElement();
+  if (!container) return [];
+  return await container.$$('[role="option"]').catch(() => []);
+}
+
+/**
+ * Open a react-select style combobox and click the option best matching `value`.
+ * Returns the chosen option text, or null if nothing matched.
+ */
+async function selectComboboxOption(page, combobox, value) {
+  await combobox.scrollIntoViewIfNeeded().catch(() => {});
+  await combobox.click().catch(() => {});
+  await page.waitForTimeout(350);
+
+  const options = await findOptionsForCombobox(page, combobox);
+  if (options.length === 0) {
+    await pressEscape(page);
+    return null;
+  }
+
+  const target = value.toLowerCase().trim();
+  const entries = [];
+  for (const opt of options) {
+    const text = ((await opt.innerText().catch(() => '')) || '').trim();
+    if (text) entries.push({ opt, text, lower: text.toLowerCase() });
+  }
+
+  // Exact first, then option-contains-value, then value-contains-option (long options only,
+  // so a short option like "No" can't hijack "I do not have a disability")
+  let chosen =
+    entries.find((e) => e.lower === target) ||
+    entries.find((e) => e.lower.includes(target)) ||
+    entries.find((e) => e.text.length >= 4 && target.includes(e.lower));
+
+  // Forms word the same answer differently ("Male" vs "Man") — try known equivalents
+  if (!chosen) {
+    for (const alt of OPTION_SYNONYMS[target] || []) {
+      chosen = entries.find((e) => e.lower === alt) || entries.find((e) => e.lower.includes(alt));
+      if (chosen) break;
+    }
+  }
+
+  if (!chosen) {
+    await pressEscape(page);
+    return null;
+  }
+
+  await chosen.opt.click().catch(() => {});
+  await page.waitForTimeout(250);
+  return chosen.text;
+}
+
+/**
+ * Resolve a single radio option's visible choice text.
+ * Deliberately ignores the `name` attribute — it is shared by the whole group
+ * and would match every option identically.
+ */
+async function getRadioOptionLabel(page, radio) {
+  try {
+    const ariaLabel = await radio.getAttribute('aria-label');
+    if (ariaLabel && ariaLabel.trim()) return ariaLabel.trim();
+
+    const id = await radio.getAttribute('id');
+    if (id) {
+      const labelEl = await page.$(`label[for="${id}"]`);
+      if (labelEl) {
+        const text = await labelEl.innerText();
+        if (text && text.trim()) return text.trim();
+      }
+    }
+
+    const parentText = await radio.evaluate((el) => {
+      const parentLabel = el.closest('label');
+      return parentLabel ? parentLabel.textContent.trim() : null;
+    });
+    if (parentText) return parentText;
+
+    const value = await radio.getAttribute('value');
+    if (value && value.trim()) return value.trim();
+
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Find the question text a radio group belongs to (legend / group aria-label / name attribute).
+ */
+async function getRadioGroupQuestion(page, radio, groupName) {
+  try {
+    const fromDom = await radio.evaluate((el) => {
+      const fieldset = el.closest('fieldset');
+      const legend = fieldset ? fieldset.querySelector('legend') : null;
+      if (legend && legend.textContent.trim()) return legend.textContent.trim();
+
+      const group = el.closest('[role="radiogroup"], [role="group"]');
+      if (group) {
+        const aria = group.getAttribute('aria-label');
+        if (aria && aria.trim()) return aria.trim();
+      }
+      return null;
+    });
+    if (fromDom) return fromDom;
+  } catch (_) {}
+  return groupName;
 }
 
 /**
@@ -372,6 +721,40 @@ async function clickContinueIfPresent(page) {
 }
 
 /**
+ * Click an "Apply" entry button on a job landing page that has no form yet.
+ * Callers must only invoke this when nothing has been filled — on a completed
+ * form an "Apply" button can be the submit control.
+ */
+async function clickApplyEntryIfPresent(pageOrFrame) {
+  const page = await resolveFormContext(pageOrFrame);
+  if ((await countMatches(page, APPLICATION_FIELD_SELECTOR)) > 0) return false;
+
+  const APPLY_PATTERNS = ['apply now', 'apply for this job', 'apply to this job', 'apply'];
+  const candidates = await page.$$('a, button');
+
+  for (const el of candidates) {
+    let text = '';
+    try {
+      text = (await el.innerText()) || '';
+    } catch (_) {
+      continue;
+    }
+    const lower = text.toLowerCase().trim();
+    if (!lower || lower.length > 30) continue;
+    if (!isSafeToClick(lower)) continue;
+    if (!APPLY_PATTERNS.some((p) => lower === p || lower.startsWith(p))) continue;
+    if (!(await el.isVisible().catch(() => false))) continue;
+
+    await el.scrollIntoViewIfNeeded().catch(() => {});
+    await el.click().catch(() => {});
+    console.log(`  [FormFiller] Clicked apply entry button: "${text.trim()}"`);
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    return true;
+  }
+  return false;
+}
+
+/**
  * Perform real form submission when allowSubmit option is active.
  */
 async function clickSubmit(page) {
@@ -402,7 +785,8 @@ async function clickSubmit(page) {
 /**
  * Detect if we've reached the final review/summary screen or ready-to-submit state.
  */
-async function isOnReviewPage(page) {
+async function isOnReviewPage(pageOrFrame) {
+  const page = await resolveFormContext(pageOrFrame);
   const content = await page.content().catch(() => '');
   const lower = content.toLowerCase();
   const signals = [
@@ -441,7 +825,8 @@ async function isSubmittedConfirmationPage(page) {
  * Validate that mandatory required fields on the application page are actually populated.
  * Returns { valid: boolean, missingFields: string[] }
  */
-async function validateFilledForm(page) {
+async function validateFilledForm(pageOrFrame) {
+  const page = await resolveFormContext(pageOrFrame);
   const missing = [];
   try {
     // 1. Mandatory core Greenhouse inputs check
@@ -467,6 +852,13 @@ async function validateFilledForm(page) {
     for (const reqEl of requiredEls) {
       const isVis = await reqEl.isVisible().catch(() => false);
       if (!isVis) continue;
+
+      // Greenhouse pairs each combobox with an aria-hidden proxy input carrying `required`.
+      // It is never user-fillable, so validating it would always report a phantom failure.
+      const isProxy = await reqEl.evaluate(
+        (e) => e.getAttribute('aria-hidden') === 'true' || e.getAttribute('tabindex') === '-1'
+      ).catch(() => false);
+      if (isProxy) continue;
 
       const tag = await reqEl.evaluate((e) => e.tagName.toLowerCase()).catch(() => '');
       if (tag === 'select') {
@@ -495,9 +887,12 @@ async function validateFilledForm(page) {
 
 module.exports = {
   fillVisibleFields,
+  resolveFormContext,
+  waitForFormFields,
   validateFilledForm,
   detectCaptcha,
   clickContinueIfPresent,
+  clickApplyEntryIfPresent,
   clickSubmit,
   isOnReviewPage,
   isSubmittedConfirmationPage,

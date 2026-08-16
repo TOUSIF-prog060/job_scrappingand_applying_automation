@@ -10,37 +10,37 @@
 
 const FIELD_MAP = [
   // ── Personal info ─────────────────────────────────────────────
-  { patterns: ['first name', 'given name', 'firstname'], key: 'firstName', type: 'text' },
-  { patterns: ['last name', 'surname', 'family name', 'lastname'], key: 'lastName', type: 'text' },
-  { patterns: ['full name', 'your name'], key: 'fullName', type: 'text' }, // virtual — see below
-  { patterns: ['email', 'e-mail', 'email address'], key: 'email', type: 'text' },
-  { patterns: ['phone', 'telephone', 'mobile', 'phone number'], key: 'phone', type: 'text' },
+  { patterns: ['first name', 'given name', 'firstname', 'first_name'], key: 'firstName', type: 'text' },
+  { patterns: ['last name', 'surname', 'family name', 'lastname', 'last_name'], key: 'lastName', type: 'text' },
+  { patterns: ['full name', 'your name', 'name', 'applicant name'], key: 'fullName', type: 'text' }, // virtual — see below
+  { patterns: ['email', 'e-mail', 'email address', 'email_address', 'applicant email'], key: 'email', type: 'text' },
+  { patterns: ['phone', 'telephone', 'mobile', 'phone number', 'phone_number', 'contact phone'], key: 'phone', type: 'text' },
   { patterns: ['location', 'city', 'current location', 'where are you located'], key: 'location', type: 'text' },
 
   // ── Links ──────────────────────────────────────────────────────
-  { patterns: ['linkedin', 'linkedin url', 'linkedin profile'], key: 'linkedin', type: 'text' },
-  { patterns: ['github', 'github url', 'github profile'], key: 'github', type: 'text' },
-  { patterns: ['website', 'portfolio', 'personal website', 'personal site'], key: 'website', type: 'text' },
+  { patterns: ['linkedin', 'linkedin url', 'linkedin profile', 'linkedin_url'], key: 'linkedin', type: 'text' },
+  { patterns: ['github', 'github url', 'github profile', 'github_url'], key: 'github', type: 'text' },
+  { patterns: ['website', 'portfolio', 'personal website', 'personal site', 'website_url', 'portfolio_url'], key: 'website', type: 'text' },
 
   // ── Work / Education ───────────────────────────────────────────
-  { patterns: ['current title', 'job title', 'current job', 'current position'], key: 'currentTitle', type: 'text' },
-  { patterns: ['education', 'degree', 'highest education'], key: 'education', type: 'text' },
-  { patterns: ['experience', 'years of experience'], key: 'experience', type: 'text' },
-  { patterns: ['salary', 'expected salary', 'desired salary', 'compensation'], key: 'salary', type: 'text' },
-  { patterns: ['start date', 'available to start', 'when can you start'], key: 'startDate', type: 'text' },
+  { patterns: ['current title', 'job title', 'current job', 'current position', 'title', 'position'], key: 'currentTitle', type: 'text' },
+  { patterns: ['education', 'degree', 'highest education', 'school', 'university'], key: 'education', type: 'text' },
+  { patterns: ['experience', 'years of experience', 'years experience'], key: 'experience', type: 'text' },
+  { patterns: ['salary', 'expected salary', 'desired salary', 'compensation', 'salary expectation'], key: 'salary', type: 'text' },
+  { patterns: ['start date', 'available to start', 'when can you start', 'availability'], key: 'startDate', type: 'text' },
 
   // ── EEO / legal ───────────────────────────────────────────────
   { patterns: ['gender'], key: 'gender', type: 'select' },
-  { patterns: ['race', 'ethnicity', 'racial'], key: 'ethnicity', type: 'select' },
-  { patterns: ['veteran', 'protected veteran'], key: 'veteranStatus', type: 'select' },
-  { patterns: ['disability'], key: 'disabilityStatus', type: 'select' },
-  { patterns: ['authorized', 'work authorization', 'legally authorized'], key: 'workAuthorization', type: 'select' },
-  { patterns: ['sponsorship', 'visa', 'require sponsorship'], key: 'requiresSponsorship', type: 'select' },
+  { patterns: ['race', 'ethnicity', 'racial', 'ethnicity/race'], key: 'ethnicity', type: 'select' },
+  { patterns: ['veteran', 'protected veteran', 'veteran status'], key: 'veteranStatus', type: 'select' },
+  { patterns: ['disability', 'disability status'], key: 'disabilityStatus', type: 'select' },
+  { patterns: ['authorized', 'work authorization', 'legally authorized', 'work permit'], key: 'workAuthorization', type: 'select' },
+  { patterns: ['sponsorship', 'visa', 'require sponsorship', 'visa sponsorship'], key: 'requiresSponsorship', type: 'select' },
 
   // ── Cover letter / essays / additional info ────────────────────
   { patterns: ['additional information', 'additional info', 'additional comments', 'eeo comments', 'anything else', 'other information'], key: 'additionalInfo', type: 'text' },
-  { patterns: ['cover letter', 'why do you want', 'tell us about yourself'], key: 'coverLetter', type: 'text' },
-  { patterns: ['how did you hear', 'referral', 'referred by'], key: 'referral', type: 'text' },
+  { patterns: ['cover letter', 'why do you want', 'tell us about yourself', 'cover_letter'], key: 'coverLetter', type: 'text' },
+  { patterns: ['how did you hear', 'hear about', 'first hear', 'referral', 'referred by', 'referral source'], key: 'referral', type: 'text' },
 ];
 
 /**

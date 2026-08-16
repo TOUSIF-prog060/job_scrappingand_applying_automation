@@ -6,5 +6,6 @@ dist/
 screenshots/
 !screenshots/.gitkeep
 data/resume.pdf
+data/cover_letter.pdf
 .DS_Store
 Thumbs.db

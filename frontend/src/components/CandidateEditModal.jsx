@@ -20,6 +20,9 @@ export default function CandidateEditModal({ candidate, onClose, onSaved }) {
     workAuthorization: candidate.workAuthorization || 'Yes',
     requiresSponsorship: candidate.requiresSponsorship || 'No',
     salary: candidate.salary || '90000',
+    startDate: candidate.startDate || 'Immediately',
+    experience: candidate.experience || '',
+    referral: candidate.referral || '',
     coverLetter: candidate.coverLetter || '',
     additionalInfo: candidate.additionalInfo || 'N/A - No additional requirements.',
     skills: Array.isArray(candidate.skills) ? candidate.skills.join(', ') : '',
@@ -138,6 +141,77 @@ export default function CandidateEditModal({ candidate, onClose, onSaved }) {
                 style={{ padding: '8px 12px' }}
                 value={form.currentTitle}
                 onChange={(e) => handleChange('currentTitle', e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Section: Manual Answers Not Present In Resume */}
+          <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--accent-blue-light)', borderBottom: '1px solid var(--glass-border)', paddingBottom: '4px', marginTop: '8px' }}>
+            📝 Details Not In Your Resume (Auto-filled into matching form fields)
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Expected Salary</label>
+              <input
+                type="text"
+                className="search-input"
+                style={{ padding: '8px 12px' }}
+                placeholder="e.g. 90000"
+                value={form.salary}
+                onChange={(e) => handleChange('salary', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Available Start Date</label>
+              <input
+                type="text"
+                className="search-input"
+                style={{ padding: '8px 12px' }}
+                placeholder="e.g. Immediately"
+                value={form.startDate}
+                onChange={(e) => handleChange('startDate', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Years of Experience</label>
+              <input
+                type="text"
+                className="search-input"
+                style={{ padding: '8px 12px' }}
+                placeholder="e.g. Fresher / Entry Level"
+                value={form.experience}
+                onChange={(e) => handleChange('experience', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>How Did You Hear About Us / Referral</label>
+              <input
+                type="text"
+                className="search-input"
+                style={{ padding: '8px 12px' }}
+                placeholder="e.g. LinkedIn"
+                value={form.referral}
+                onChange={(e) => handleChange('referral', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Education / Degree</label>
+              <input
+                type="text"
+                className="search-input"
+                style={{ padding: '8px 12px' }}
+                value={form.education}
+                onChange={(e) => handleChange('education', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Website / Portfolio</label>
+              <input
+                type="text"
+                className="search-input"
+                style={{ padding: '8px 12px' }}
+                value={form.website}
+                onChange={(e) => handleChange('website', e.target.value)}
               />
             </div>
           </div>

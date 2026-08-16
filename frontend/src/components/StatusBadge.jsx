@@ -5,6 +5,7 @@ export default function StatusBadge({ status }) {
     FORM_FILLED: { label: 'Form Filled', cls: 'badge-form-filled' },
     READY_FOR_SUBMISSION: { label: 'Ready', cls: 'badge-ready' },
     SCREENSHOT_CAPTURED: { label: 'Completed ✓', cls: 'badge-done' },
+    MANUAL_INTERVENTION_REQUIRED: { label: '🔐 CAPTCHA — Manual', cls: 'badge-manual' },
     FAILED: { label: 'Failed', cls: 'badge-failed' },
   };
 
